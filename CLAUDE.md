@@ -46,7 +46,7 @@ docs/             design and planning documents
 
 ## Key numbers
 
-- Tick: 250 ms. Movement is one tile per tick at base speed.
+- Tick: 250 ms. Walking is 2 tiles/s (one tile every 2 ticks); speeds are fractional and may reach 2 tiles per tick. A tile is about 1 m.
 - Subtick: 25 ms, 10 per tick. Faster characters act on earlier subticks. (Hook it in; not needed in Phase 0.)
 - Macro tick: 60 seconds, for world simulation. (Not needed in Phase 0.)
 - Regions: 64 by 64 tiles. (Not needed in Phase 0.)

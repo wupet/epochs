@@ -58,7 +58,7 @@ A starting point, to be confirmed with small tests.
 
 ## World size and regions
 
-At one tile per tick, a character covers 4 tiles a second, so a 30-to-60-minute crossing means a world roughly 7,200 to 14,400 tiles across. That's very large, and movement speed may be tuned. The world is cut into regions of 64 by 64 tiles, each loaded and simulated independently. Unvisited regions exist only as a seed and statistics until someone arrives.
+At walking speed (2 tiles a second, about 1 m a tile), a character covers 120 tiles a minute, so a 30-to-60-minute crossing means a world roughly 3,600 to 7,200 tiles across. That's very large, and movement speed may be tuned. Running and riding are faster, so those crossings are shorter. The world is cut into regions of 64 by 64 tiles, each loaded and simulated independently. Unvisited regions exist only as a seed and statistics until someone arrives.
 
 ## Simulation detail by distance
 

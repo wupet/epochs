@@ -31,7 +31,7 @@ There are three milestones. Do them in order. Finish each one, with tests passin
   - Old School RuneScape's rule applies: a diagonal step is only allowed when both L-shaped routes are clear, so both tiles you'd pass between must be walkable. No cutting corners.
   - Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. If two are equally near, prefer the one with the shorter path. The hover preview shows the same path.
   - Players pass through each other and can share tiles. Enemy collision is decided in Phase 2.
-  - Builder's interpretation, to confirm with Peter: "nearest" is measured as straight-line distance (dx² + dy²), and any remaining tie goes to the lower y, then the lower x.
+  - Builder's interpretation (dx² + dy² nearness) was replaced in milestone 0.2.1: "nearest" now counts a diagonal tile as 1 step away (Chebyshev), and the path is the one closest to the straight line. See Milestone 0.2.1 below.
 - A pure `step` function: given the world state and the intentions received this tick, return the next world state. No randomness, no clock, no I/O.
 
 **Build, in `server`:**
@@ -65,9 +65,29 @@ There are three milestones. Do them in order. Finish each one, with tests passin
 **Done when:**
 
 - Clicking a tile moves the square there one tile per tick, smoothly, along a path that avoids blocked tiles.
-- Clicking somewhere new mid-walk changes course on the next tick.
+- Clicking somewhere new mid-walk changes course on the next tick: the new path is set then, and the square turns on its next step. (At walking pace the visible turn can be up to half a second later.)
 - Two browser tabs show two squares moving on the same grid, each controlled by its own tab.
 - All tests pass.
+
+The tick retry-forever problem (a failing tick is retried without end) is not fixed in 0.2 or 0.2.1. It is scheduled first thing in 0.3. *(Peter, 2026-11-19.)*
+
+## Milestone 0.2.1: Movement speeds
+
+Follow-ups to 0.2, decided by Peter after playing it (2026-11-19). The design is in `docs/superpowers/specs/2026-11-19-movement-speeds-design.md`. All of these are *(Peter, 2026-11-19.)* unless marked as an approved builder's call.
+
+1. **Nearest.** When the clicked tile can't be reached, a diagonal tile counts as 1 step away (Chebyshev distance). Ties go to the shorter path, then lower y, then lower x (the last two are approved builder's calls).
+2. **Path shape.** Among equally short paths, take the one closest to the straight line from start to end. This replaces diagonal-first.
+3. **Spawning** on the nearest free tile is fine.
+4. **Search range.** The nearest-tile search covers 16 tiles around the click (about one screen). If nothing reachable is in range, the character stays put.
+5. **Stalls.** After a stall, the tick loop catches up at most about one second of ticks, skips the rest, and logs it.
+6. **A full server.** The 101st player waits in a queue that shows their position.
+7. **Retry-forever.** The tick that retries forever is fixed first thing in 0.3, not here.
+8. **Tick.** It stays at 250 ms.
+9. **Speeds.** Walking is one tile every 2 ticks (2 tiles/s). Any speed works by letting a step take a fractional number of ticks, built up over time. Moving 2 tiles in one tick is allowed, for fast travel later. A tile is about one metre.
+10. **Debug speed keys.** Keys 1, 2 and 3 switch between walk (2 tiles/s), run (4 tiles/s) and horse (8 tiles/s). **These are debug controls**, for testing feel only. Running and riding get real rules later.
+11. **Zoom.** Keys zoom in and out (`+` or `=` in, `-` out; approved builder's call).
+12. **Pulse.** The tick pulse is off by default (`P` toggles it, `?pulse=1` starts with it on; approved builder's call).
+13. **No free steps.** While a character stands still, their progress builds up toward a step but is capped at one full step. After a rest they step on the next tick, but repeated clicks can never beat their normal pace. There is a test for spam-clicking.
 
 ## Milestone 0.3: Content checker
 

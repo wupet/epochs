@@ -27,13 +27,18 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 
 ## Movement
 
-- Click-to-move on a tile grid. The server finds the path; characters move one tile per tick at base speed.
+- Click-to-move on a tile grid. The server finds the path. Walking is 2 tiles per second (one tile every 2 ticks); run is 4 and horse is 8. A tile is about one metre. *(Peter, 2026-11-19.)*
+- Speeds are fractional: a step can take a fractional number of ticks, built up over time. A character may move up to 2 tiles in one tick, for fast travel later. *(Peter, 2026-11-19.)*
+- The 1, 2 and 3 keys that switch between walk, run and horse are **debug controls**, for testing feel only. Running and riding get real rules later. *(Peter, 2026-11-19.)*
+- No free steps: a standing character's progress toward a step is capped at one full step. After a rest they step on the next tick, but repeated clicks never beat their normal pace. *(Peter, 2026-11-19.)*
 - A new click replaces the path on the next tick. Hovering shows the planned path.
 - Movement is in 8 directions. A diagonal step takes one tick, like any other step. *(Peter, 2026-11-19.)*
 - A diagonal step is only allowed when both tiles you'd pass between are walkable, as in Old School RuneScape. No cutting corners. *(Peter, 2026-11-19.)*
-- Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. If two are equally near, the one with the shorter path wins. The hover preview shows the same path. *(Peter, 2026-11-19.)*
+- Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. A diagonal tile counts as 1 step away. If two are equally near, the one with the shorter path wins, then the lower y, then the lower x. The hover preview shows the same path. *(Peter, 2026-11-19; the last two tie-breaks are approved builder's calls.)*
+- The nearest-tile search covers 16 tiles around the click, about one screen. If nothing reachable is in range, the character stays put. *(Peter, 2026-11-19.)*
+- Among equally short paths, the one closest to the straight line from start to end wins. *(Peter, 2026-11-19.)*
+- A full server (100 players) puts the next player in a queue that shows their position. *(Peter, 2026-11-19.)*
 - Players pass through each other and can share tiles. Enemy collision is decided in Phase 2. *(Peter, 2026-11-19.)*
-- *Builder's interpretation, to confirm with Peter:* "nearest" is straight-line distance (dx² + dy²), and any remaining tie goes to the lower y, then the lower x.
 - Attack-move, like League of Legends, comes later.
 - Movement speed is a stat: faster characters act on earlier subticks.
 

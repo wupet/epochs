@@ -199,7 +199,8 @@ describe('step: moving', () => {
     let world = step(createWorld(grid, t(0, 0)), [join(1)]);
     world = step(world, [move(1, t(2, 2))]);
     for (let i = 0; i < 6; i++) world = step(world, []);
-    expect(tileOf(world, 1)).toEqual(t(2, 1));
+    // From (0,0), (1,1) is nearness 1 from (2,2) and 1 step away; (2,1) is also nearness 1 but 2 steps away.
+    expect(tileOf(world, 1)).toEqual(t(1, 1));
   });
 
   it('clears the path when the next step is no longer allowed', () => {
