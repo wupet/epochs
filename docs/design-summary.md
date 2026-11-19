@@ -37,6 +37,10 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - Attack-move, like League of Legends, comes later.
 - Movement speed is a stat: faster characters act on earlier subticks.
 
+## Technology
+
+- PixiJS 8 draws the client; the server talks to browsers over WebSockets with the `ws` library. *(Peter, 2026-11-19.)*
+
 ## Combat (later phases)
 
 - **Perfect accuracy.** Attacks never miss by chance. If you're in a telegraphed area, you're hit; if you moved out, you're not. Damage has only a small random spread.

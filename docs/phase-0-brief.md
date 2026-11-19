@@ -46,7 +46,7 @@ There are three milestones. Do them in order. Finish each one, with tests passin
 
 **Build, in `client`:**
 
-- Render the grid and characters with PixiJS.
+- Render the grid and characters with PixiJS. *(PixiJS 8 for the client and the `ws` library for the server: Peter, 2026-11-19.)*
 - Clicking a tile sends a move intention.
 - Hovering a tile shows the planned path, computed with the same pathfinding from `shared`. The server's path is still the one that counts.
 - Smooth movement: slide characters between tile positions over the tick, so half-tile jumps never show. The world should feel fluid even though it advances in steps.
