@@ -16,8 +16,8 @@ export function pulseLevel(msSinceTick: number, strength: number = PULSE_STRENGT
   return strength * (1 - t);
 }
 
-/** The pulse is on unless the page address says `?pulse=0` or `?pulse=off`. */
+/** The pulse is off unless the page address says `?pulse=1` or `?pulse=on`. */
 export function pulseEnabledFromSearch(search: string): boolean {
   const value = new URLSearchParams(search).get('pulse');
-  return value !== '0' && value !== 'off';
+  return value === '1' || value === 'on';
 }

@@ -1,39 +1,63 @@
 /**
- * Smooth movement: a character is drawn sliding from where it was drawn to its new tile. Pure: time
- * is always passed in as `nowMs`; nothing here reads a clock or touches the DOM.
+ * Smooth movement: a character is drawn sliding along a polyline of tiles at a pace set by its
+ * speed. Pure: time is always passed in as `nowMs`; nothing here reads a clock or touches the DOM.
  */
-import { TICK_MS } from '@epochs/shared';
+import { STEP, TICK_MS } from '@epochs/shared';
 
-/** How long a slide takes, in ms. One tick, so a character arrives just as the next tick does. */
-export const TWEEN_MS = TICK_MS;
+/**
+ * The one knob for slide length: 1 = a slide takes exactly the time the server spends per tile at
+ * that speed. Raise slightly (e.g. 1.08) if movement hitches at each tile.
+ */
+export const SLIDE_TIME_SCALE = 1;
+
+/** The walking speed, in millitiles per tick (debug movement modes: walk is 500, run 1000, horse 2000). */
+const WALK_SPEED = STEP / 2;
 
 export interface Point {
   readonly x: number;
   readonly y: number;
 }
 
-/** A slide from `from` to `to`, started at `startMs`. A still character has `from` equal to `to`. */
+/** How long one tile's slide takes, in ms, for a character of `speed` millitiles per tick. */
+export function msPerTile(speed: number): number {
+  const s = speed > 0 ? speed : WALK_SPEED;
+  return ((TICK_MS * STEP) / s) * SLIDE_TIME_SCALE;
+}
+
+/**
+ * A slide along `points`, started at `startMs`, taking `msPerSegment` for each segment between
+ * consecutive points. A still character has a single point.
+ */
 export interface Motion {
-  readonly from: Point;
-  readonly to: Point;
+  readonly points: readonly Point[];
   readonly startMs: number;
+  readonly msPerSegment: number;
 }
 
 export function stillAt(tile: Point, nowMs: number): Motion {
-  return { from: { x: tile.x, y: tile.y }, to: { x: tile.x, y: tile.y }, startMs: nowMs };
+  return { points: [{ x: tile.x, y: tile.y }], startMs: nowMs, msPerSegment: 0 };
 }
 
-/** Where the motion is drawn at `nowMs`: linear, clamped to the slide. A duration of 0 or less snaps to `to`. */
-export function positionAt(motion: Motion, nowMs: number, durationMs: number = TWEEN_MS): Point {
-  if (durationMs <= 0) return { x: motion.to.x, y: motion.to.y };
-  const t = Math.min(1, Math.max(0, (nowMs - motion.startMs) / durationMs));
+/** Where the motion is drawn at `nowMs`: piecewise linear through the points, clamped to the last. */
+export function positionAt(motion: Motion, nowMs: number): Point {
+  const { points, startMs, msPerSegment } = motion;
+  const last = points[points.length - 1]!;
+  if (points.length === 1 || msPerSegment <= 0) return { x: last.x, y: last.y };
+  const progress = Math.max(0, (nowMs - startMs) / msPerSegment);
+  const segments = points.length - 1;
+  if (progress >= segments) return { x: last.x, y: last.y };
+  const index = Math.floor(progress);
+  const t = progress - index;
+  const a = points[index]!;
+  const b = points[index + 1]!;
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/** A new slide through `through`, starting from wherever the motion is drawn right now, so nothing jumps. */
+export function retarget(motion: Motion, through: readonly Point[], nowMs: number, msPerSegment: number): Motion {
   return {
-    x: motion.from.x + (motion.to.x - motion.from.x) * t,
-    y: motion.from.y + (motion.to.y - motion.from.y) * t,
+    points: [positionAt(motion, nowMs), ...through.map((p) => ({ x: p.x, y: p.y }))],
+    startMs: nowMs,
+    msPerSegment,
   };
-}
-
-/** A new slide to `to`, starting from wherever the motion is drawn right now, so nothing jumps. */
-export function retarget(motion: Motion, to: Point, nowMs: number): Motion {
-  return { from: positionAt(motion, nowMs), to: { x: to.x, y: to.y }, startMs: nowMs };
 }

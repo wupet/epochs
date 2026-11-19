@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { TickMessage, WelcomeMessage } from '@epochs/shared';
+import type { QueueMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ClientWorld, parseServerMessage } from './client-world';
-import { TWEEN_MS } from './motion';
+import { msPerTile } from './motion';
+
+const WALK_MS = msPerTile(500);
 
 const welcome: WelcomeMessage = {
   type: 'welcome',
@@ -57,25 +59,25 @@ describe('ClientWorld', () => {
     expect(world.positionOf(2, 50)).toEqual({ x: 1, y: 1 });
   });
 
-  it('slides a moved character over one tween', () => {
+  it('slides a walking character half a tile in 250 ms and onto the tile in 500 ms', () => {
     const world = joined();
     expect(world.applyTick(tick(11, { moved: [{ id: 1, x: 2, y: 0, speed: 500, via: [] }] }), 1000)).toBe(true);
     expect(world.tick).toBe(11);
     expect(world.tileOf(1)).toEqual({ x: 2, y: 0 });
     expect(world.positionOf(1, 1000)).toEqual({ x: 0, y: 0 });
-    expect(world.positionOf(1, 1000 + TWEEN_MS / 2)).toEqual({ x: 1, y: 0 });
-    expect(world.positionOf(1, 1000 + TWEEN_MS)).toEqual({ x: 2, y: 0 });
+    expect(world.positionOf(1, 1000 + WALK_MS / 2)).toEqual({ x: 1, y: 0 });
+    expect(world.positionOf(1, 1000 + WALK_MS)).toEqual({ x: 2, y: 0 });
     // The other character did not move.
-    expect(world.positionOf(2, 1000 + TWEEN_MS / 2)).toEqual({ x: 4, y: 2 });
+    expect(world.positionOf(2, 1000 + WALK_MS / 2)).toEqual({ x: 4, y: 2 });
   });
 
   it('slides from the drawn position when a tick arrives mid-slide', () => {
     const world = joined();
     world.applyTick(tick(11, { moved: [{ id: 1, x: 2, y: 0, speed: 500, via: [] }] }), 0);
-    const mid = world.positionOf(1, TWEEN_MS / 2);
-    world.applyTick(tick(12, { moved: [{ id: 1, x: 2, y: 2, speed: 500, via: [] }] }), TWEEN_MS / 2);
-    expect(world.positionOf(1, TWEEN_MS / 2)).toEqual(mid);
-    expect(world.positionOf(1, TWEEN_MS / 2 + TWEEN_MS)).toEqual({ x: 2, y: 2 });
+    const mid = world.positionOf(1, WALK_MS / 2);
+    world.applyTick(tick(12, { moved: [{ id: 1, x: 2, y: 2, speed: 500, via: [] }] }), WALK_MS / 2);
+    expect(world.positionOf(1, WALK_MS / 2)).toEqual(mid);
+    expect(world.positionOf(1, WALK_MS / 2 + WALK_MS)).toEqual({ x: 2, y: 2 });
   });
 
   it('adds joined characters still, and removes left ones', () => {
@@ -115,7 +117,49 @@ describe('ClientWorld', () => {
       expect(world.applyTick(tick(10 + i, { moved: [{ id: 1, x: i % 5, y: 1, speed: 500, via: [] }] }), 7000)).toBe(true);
     }
     expect(world.tileOf(1)).toEqual({ x: 0, y: 1 });
-    expect(world.positionOf(1, 7000 + TWEEN_MS)).toEqual({ x: 0, y: 1 });
+    expect(world.positionOf(1, 7000 + WALK_MS)).toEqual({ x: 0, y: 1 });
+  });
+});
+
+describe('ClientWorld speeds, via and queue', () => {
+  it('a horse moving two tiles in a tick slides through its via tile, never cutting the corner', () => {
+    const world = joined();
+    world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 1, speed: 2000, via: [{ x: 1, y: 0 }] }] }), 0);
+    expect(world.positionOf(1, 0)).toEqual({ x: 0, y: 0 });
+    expect(world.positionOf(1, 125)).toEqual({ x: 1, y: 0 });
+    expect(world.positionOf(1, 250)).toEqual({ x: 1, y: 1 });
+    for (let ms = 0; ms <= 250; ms += 5) {
+      expect(world.positionOf(1, ms)).not.toEqual({ x: 0.5, y: 0.5 });
+    }
+  });
+
+  it('stores speeds from welcome, joined and moved, and speedOf is undefined for strangers', () => {
+    const world = joined();
+    expect(world.speedOf(1)).toBe(500);
+    expect(world.speedOf(99)).toBeUndefined();
+    world.applyTick(tick(11, { joined: [{ id: 3, x: 1, y: 2, speed: 1000 }] }), 0);
+    expect(world.speedOf(3)).toBe(1000);
+    world.applyTick(tick(12, { moved: [{ id: 1, x: 1, y: 0, speed: 2000, via: [] }] }), 10);
+    expect(world.speedOf(1)).toBe(2000);
+    world.applyTick(tick(13, { left: [3] }), 20);
+    expect(world.speedOf(3)).toBeUndefined();
+  });
+
+  it('the first step after a speed change slides at the new speed', () => {
+    const world = joined();
+    world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 0, speed: 1000, via: [] }] }), 0);
+    expect(world.positionOf(1, 125)).toEqual({ x: 0.5, y: 0 });
+    expect(world.positionOf(1, 250)).toEqual({ x: 1, y: 0 });
+  });
+
+  it('keeps a queue position until a welcome clears it', () => {
+    const world = new ClientWorld();
+    expect(world.queuePosition).toBeNull();
+    const msg: QueueMessage = { type: 'queue', position: 3 };
+    world.applyQueue(msg);
+    expect(world.queuePosition).toBe(3);
+    world.applyWelcome(welcome, 0);
+    expect(world.queuePosition).toBeNull();
   });
 });
 
@@ -127,6 +171,11 @@ describe('parseServerMessage', () => {
     expect(parseServerMessage('[]')).toBeNull();
     expect(parseServerMessage('null')).toBeNull();
     expect(parseServerMessage('5')).toBeNull();
+  });
+
+  it('accepts a queue message', () => {
+    const q: QueueMessage = { type: 'queue', position: 2 };
+    expect(parseServerMessage(JSON.stringify(q))).toEqual(q);
   });
 
   it('accepts a welcome or a tick', () => {

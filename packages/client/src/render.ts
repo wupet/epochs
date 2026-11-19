@@ -6,9 +6,10 @@ import { Application, Graphics } from 'pixi.js';
 import { findRoute, inBounds } from '@epochs/shared';
 import type { Grid, Tile } from '@epochs/shared';
 import type { ClientWorld } from './client-world';
+import { computeLayout, fitTileSize, tileAtScreen } from './layout';
+import type { Layout } from './layout';
 import { pulseEnabledFromSearch, pulseLevel } from './pulse';
 
-const MIN_TILE_SIZE = 12;
 const SQUARE_INSET = 0.15;
 
 const COLOR_BACKGROUND = 0x111111;
@@ -34,26 +35,15 @@ export interface RendererOptions {
   readonly onMoveIntent: (tile: Tile) => void;
 }
 
-interface Layout {
-  readonly tileSize: number;
-  readonly offsetX: number;
-  readonly offsetY: number;
-}
-
-function computeLayout(grid: Grid): Layout {
-  const tileSize = Math.max(
-    MIN_TILE_SIZE,
-    Math.floor(Math.min(window.innerWidth / grid.width, window.innerHeight / grid.height)),
-  );
-  return {
-    tileSize,
-    offsetX: Math.floor((window.innerWidth - grid.width * tileSize) / 2),
-    offsetY: Math.floor((window.innerHeight - grid.height * tileSize) / 2),
-  };
+/** The layout for now: zoom fits the whole map and the map is centred. (Zoom keys and camera follow come later.) */
+function currentLayout(grid: Grid): Layout {
+  const tileSize = fitTileSize(window.innerWidth, window.innerHeight, grid.width, grid.height);
+  const focus = { x: Math.floor(grid.width / 2), y: Math.floor(grid.height / 2) };
+  return computeLayout(window.innerWidth, window.innerHeight, grid.width, grid.height, tileSize, focus);
 }
 
 function sameLayout(a: Layout, b: Layout): boolean {
-  return a.tileSize === b.tileSize && a.offsetX === b.offsetX && a.offsetY === b.offsetY;
+  return a.tileSize === b.tileSize && a.originX === b.originX && a.originY === b.originY;
 }
 
 export async function startRenderer(options: RendererOptions): Promise<Renderer> {
@@ -87,7 +77,7 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
   let previewDestination: Tile | null = null;
 
   function drawGrid(grid: Grid, layout: Layout): void {
-    const { tileSize, offsetX, offsetY } = layout;
+    const { tileSize, originX: offsetX, originY: offsetY } = layout;
     gridLayer.clear();
     for (let y = 0; y < grid.height; y++) {
       for (let x = 0; x < grid.width; x++) {
@@ -110,11 +100,7 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
 
   function tileAt(clientX: number, clientY: number, grid: Grid): Tile | null {
     const rect = app.canvas.getBoundingClientRect();
-    const { tileSize, offsetX, offsetY } = computeLayout(grid);
-    const tile = {
-      x: Math.floor((clientX - rect.left - offsetX) / tileSize),
-      y: Math.floor((clientY - rect.top - offsetY) / tileSize),
-    };
+    const tile = tileAtScreen(currentLayout(grid), clientX - rect.left, clientY - rect.top);
     return inBounds(grid, tile) ? tile : null;
   }
 
@@ -151,13 +137,13 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
       drawnGrid = null;
       drawnLayout = null;
     } else {
-      const layout = computeLayout(grid);
+      const layout = currentLayout(grid);
       if (grid !== drawnGrid || drawnLayout === null || !sameLayout(layout, drawnLayout)) {
         drawGrid(grid, layout);
         drawnGrid = grid;
         drawnLayout = layout;
       }
-      const { tileSize, offsetX, offsetY } = layout;
+      const { tileSize, originX: offsetX, originY: offsetY } = layout;
       const you = world.you;
       const mine = you === null ? undefined : world.tileOf(you);
 

@@ -33,12 +33,13 @@ describe('pulseLevel', () => {
 });
 
 describe('pulseEnabledFromSearch', () => {
-  it('is off only for pulse=0 or pulse=off', () => {
+  it('is on only for pulse=1 or pulse=on', () => {
+    expect(pulseEnabledFromSearch('')).toBe(false);
+    expect(pulseEnabledFromSearch('?pulse=1')).toBe(true);
+    expect(pulseEnabledFromSearch('?pulse=on')).toBe(true);
     expect(pulseEnabledFromSearch('?pulse=0')).toBe(false);
     expect(pulseEnabledFromSearch('?pulse=off')).toBe(false);
-    expect(pulseEnabledFromSearch('')).toBe(true);
-    expect(pulseEnabledFromSearch('?pulse=1')).toBe(true);
-    expect(pulseEnabledFromSearch('?a=b&pulse=0')).toBe(false);
-    expect(pulseEnabledFromSearch('?other=0')).toBe(true);
+    expect(pulseEnabledFromSearch('?a=b&pulse=1')).toBe(true);
+    expect(pulseEnabledFromSearch('?other=1')).toBe(false);
   });
 });
