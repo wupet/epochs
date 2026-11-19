@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QueueMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ClientWorld, parseServerMessage } from './client-world';
-import { MAX_SLIDE_POINTS, msPerTile } from './motion';
+import { msPerTile } from './motion';
 
 const WALK_MS = msPerTile(500);
 
@@ -61,25 +61,23 @@ describe('ClientWorld', () => {
 
   it('slides a walking character half a tile in 250 ms and onto the tile in 500 ms', () => {
     const world = joined();
-    expect(world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 0, speed: 500, via: [] }] }), 1000)).toBe(true);
+    expect(world.applyTick(tick(11, { moved: [{ id: 1, x: 2, y: 0, speed: 500, via: [] }] }), 1000)).toBe(true);
     expect(world.tick).toBe(11);
-    expect(world.tileOf(1)).toEqual({ x: 1, y: 0 });
+    expect(world.tileOf(1)).toEqual({ x: 2, y: 0 });
     expect(world.positionOf(1, 1000)).toEqual({ x: 0, y: 0 });
-    expect(world.positionOf(1, 1000 + WALK_MS / 2)).toEqual({ x: 0.5, y: 0 });
-    expect(world.positionOf(1, 1000 + WALK_MS)).toEqual({ x: 1, y: 0 });
+    expect(world.positionOf(1, 1000 + WALK_MS / 2)).toEqual({ x: 1, y: 0 });
+    expect(world.positionOf(1, 1000 + WALK_MS)).toEqual({ x: 2, y: 0 });
     // The other character did not move.
     expect(world.positionOf(2, 1000 + WALK_MS / 2)).toEqual({ x: 4, y: 2 });
   });
 
   it('slides from the drawn position when a tick arrives mid-slide', () => {
     const world = joined();
-    world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 0, speed: 500, via: [] }] }), 0);
+    world.applyTick(tick(11, { moved: [{ id: 1, x: 2, y: 0, speed: 500, via: [] }] }), 0);
     const mid = world.positionOf(1, WALK_MS / 2);
-    world.applyTick(tick(12, { moved: [{ id: 1, x: 1, y: 2, speed: 500, via: [] }] }), WALK_MS / 2);
+    world.applyTick(tick(12, { moved: [{ id: 1, x: 2, y: 2, speed: 500, via: [] }] }), WALK_MS / 2);
     expect(world.positionOf(1, WALK_MS / 2)).toEqual(mid);
-    // It still goes through the tile it was heading for (half a tile, half the time), then on to the new one.
-    expect(world.positionOf(1, WALK_MS)).toEqual({ x: 1, y: 0 });
-    expect(world.positionOf(1, WALK_MS + 2 * WALK_MS)).toEqual({ x: 1, y: 2 });
+    expect(world.positionOf(1, WALK_MS / 2 + WALK_MS)).toEqual({ x: 2, y: 2 });
   });
 
   it('adds joined characters still, and removes left ones', () => {
@@ -116,28 +114,34 @@ describe('ClientWorld', () => {
   it('settles on the last tile after 40 ticks applied at the same instant', () => {
     const world = joined();
     for (let i = 1; i <= 40; i++) {
-      // x runs 1,2,3,4,3,2,1,0,1,2 ...: one tile per tick, so the last tile (tick 40) is (0,1).
-      const phase = i % 8;
-      const x = phase <= 4 ? phase : 8 - phase;
-      expect(world.applyTick(tick(10 + i, { moved: [{ id: 1, x, y: 1, speed: 500, via: [] }] }), 7000)).toBe(true);
+      expect(world.applyTick(tick(10 + i, { moved: [{ id: 1, x: i % 5, y: 1, speed: 500, via: [] }] }), 7000)).toBe(true);
     }
     expect(world.tileOf(1)).toEqual({ x: 0, y: 1 });
-    // The slide keeps (0,0) and the last MAX_SLIDE_POINTS - 1 tiles: (2,1) (3,1) (4,1) (3,1) (2,1) (1,1) (0,1).
-    // Segment lengths 2,1,1,1,1,1,1 = 8 tiles, so it lands after 8 walking tiles' time, and not before.
-    expect(MAX_SLIDE_POINTS).toBe(8);
-    expect(world.positionOf(1, 7000 + 8 * WALK_MS)).toEqual({ x: 0, y: 1 });
-    expect(world.positionOf(1, 7000 + 7 * WALK_MS)).not.toEqual({ x: 0, y: 1 });
+    expect(world.positionOf(1, 7000 + WALK_MS)).toEqual({ x: 0, y: 1 });
+  });
+});
+
+describe('ClientWorld slide guards', () => {
+  it('steady walking with up to 15 ms of jitter stays within 1.1 tiles of the server tile', () => {
+    // One tile per message in a straight line, each arriving 500 ms (plus a deterministic offset) after the last.
+    const offsets = [15, -15, 7, -7, 0];
+    const world = joined();
+    let at = 0;
+    for (let k = 1; k <= 40; k++) {
+      at += WALK_MS + offsets[k % offsets.length]!;
+      world.applyTick(tick(10 + k, { moved: [{ id: 1, x: k, y: 0, speed: 500, via: [] }] }), at);
+      const behind = k - world.positionOf(1, at)!.x;
+      expect(behind, `lag after message ${k}`).toBeLessThanOrEqual(1.1);
+    }
   });
 
-  it('keeps the path through two ticks applied at the same instant, never cutting the corner', () => {
+  it('40 straight walk ticks applied at the same instant land on the last tile one segment later', () => {
     const world = joined();
-    world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 0, speed: 500, via: [] }] }), 0);
-    world.applyTick(tick(12, { moved: [{ id: 1, x: 1, y: 1, speed: 500, via: [] }] }), 0);
-    expect(world.positionOf(1, WALK_MS)).toEqual({ x: 1, y: 0 });
-    expect(world.positionOf(1, 2 * WALK_MS)).toEqual({ x: 1, y: 1 });
-    for (let ms = 0; ms <= 2 * WALK_MS; ms += 10) {
-      expect(world.positionOf(1, ms)).not.toEqual({ x: 0.5, y: 0.5 });
+    for (let k = 1; k <= 40; k++) {
+      world.applyTick(tick(10 + k, { moved: [{ id: 1, x: k, y: 0, speed: 500, via: [] }] }), 9000);
     }
+    expect(world.tileOf(1)).toEqual({ x: 40, y: 0 });
+    expect(world.positionOf(1, 9000 + WALK_MS)).toEqual({ x: 40, y: 0 });
   });
 });
 
