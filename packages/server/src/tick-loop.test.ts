@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TICK_MS } from '@epochs/shared';
 import { ManualClock } from './manual-clock';
-import { startTickLoop } from './tick-loop';
+import { MAX_CATCH_UP_TICKS, startTickLoop } from './tick-loop';
 
 describe('startTickLoop', () => {
   it('runs exactly 40 ticks over 10 000 ms advanced in irregular chunks', () => {
@@ -36,6 +36,47 @@ describe('startTickLoop', () => {
     startTickLoop(() => ticks++, clock);
     clock.advance(1000, 600);
     expect(ticks).toBe(4);
+  });
+
+  it('runs at most 4 ticks after a long stall, skips the rest and reports them once', () => {
+    const clock = new ManualClock();
+    let ticks = 0;
+    const skips: number[] = [];
+    const loop = startTickLoop(() => ticks++, clock, TICK_MS, (n) => skips.push(n));
+    expect(MAX_CATCH_UP_TICKS).toBe(4);
+
+    clock.advance(10_000, 10_000);
+
+    expect(ticks).toBe(4);
+    expect(skips).toEqual([36]);
+    expect(loop.ticksRun()).toBe(40);
+    expect(loop.ticksSkipped()).toBe(36);
+  });
+
+  it('stays drift-free after a skip: the next second runs exactly 4 ticks, with no second skip', () => {
+    const clock = new ManualClock();
+    let ticks = 0;
+    const skips: number[] = [];
+    const loop = startTickLoop(() => ticks++, clock, TICK_MS, (n) => skips.push(n));
+    clock.advance(10_000, 10_000);
+
+    clock.advance(1000);
+
+    expect(ticks).toBe(8);
+    expect(skips).toEqual([36]);
+    expect(loop.ticksRun()).toBe(44);
+    expect(loop.ticksSkipped()).toBe(36);
+  });
+
+  it('does not skip when exactly 4 ticks are due', () => {
+    const clock = new ManualClock();
+    let ticks = 0;
+    const skips: number[] = [];
+    const loop = startTickLoop(() => ticks++, clock, TICK_MS, (n) => skips.push(n));
+    clock.advance(1000, 1000);
+    expect(ticks).toBe(4);
+    expect(skips).toEqual([]);
+    expect(loop.ticksSkipped()).toBe(0);
   });
 
   it('stops: no ticks afterwards, and the pending wake is cancelled', () => {

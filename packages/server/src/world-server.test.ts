@@ -3,8 +3,8 @@ import { WebSocket } from 'ws';
 import { TICK_MS } from '@epochs/shared';
 import type { CharacterView, ServerMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ManualClock } from './manual-clock';
-import { createWorldServer } from './world-server';
-import type { WorldServer } from './world-server';
+import { MAX_PLAYERS, createWorldServer } from './world-server';
+import type { WorldServer, WorldServerOptions } from './world-server';
 
 /** Polls until `predicate` is true. Fails after `timeoutMs`. Never sleeps blindly. */
 async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
@@ -38,9 +38,9 @@ describe('world server', () => {
   let port: number;
   const clients: TestClient[] = [];
 
-  async function start(): Promise<void> {
+  async function start(options: Omit<WorldServerOptions, 'clock'> = {}): Promise<void> {
     clock = new ManualClock();
-    const created = createWorldServer({ clock });
+    const created = createWorldServer({ clock, ...options });
     server = created;
     port = await created.listen(0);
   }
@@ -336,5 +336,168 @@ describe('world server', () => {
     expect(second.joined).toEqual([]);
     expect(b.client.messages.flatMap((m) => (m.type === 'tick' ? m.left : []))).toEqual([]);
     expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('lets 100 play by default', () => {
+    expect(MAX_PLAYERS).toBe(100);
+  });
+
+  it('queues connections beyond maxPlayers with their 1-based position, and welcomes them nothing', async () => {
+    await start({ maxPlayers: 2 });
+    await connectAndWelcome();
+    await connectAndWelcome();
+
+    const c = await connect();
+    const d = await connect();
+
+    expect(await c.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+    expect(await d.nextMessage('queue')).toEqual({ type: 'queue', position: 2 });
+    clock.advance(TICK_MS);
+    clock.advance(TICK_MS);
+    await c.flush();
+    await d.flush();
+    expect(c.messages.map((m) => m.type)).toEqual(['queue']);
+    expect(d.messages.map((m) => m.type)).toEqual(['queue']);
+  });
+
+  it('admits the first in the queue when a player closes, and moves everyone behind up', async () => {
+    await start({ maxPlayers: 2 });
+    const a = await connectAndWelcome();
+    const b = await connectAndWelcome();
+    const c = await connect();
+    const d = await connect();
+    await c.nextMessage('queue');
+    await d.nextMessage('queue');
+
+    a.client.ws.close();
+    expect(await d.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+    clock.advance(TICK_MS);
+    const welcomeForC = await c.nextMessage('welcome');
+    const tickForB = await b.client.nextMessage('tick');
+
+    expect(welcomeForC.you).toBe(3);
+    expect(welcomeForC.characters.map((x) => x.id)).toEqual([2, 3]);
+    expect(tickForB.joined.map((x) => x.id)).toEqual([3]);
+    expect(tickForB.left).toEqual([1]);
+    expect(c.messages.map((m) => m.type)).toEqual(['queue', 'welcome']);
+    // D is still waiting: it was told its new place and nothing else.
+    await d.flush();
+    expect(d.messages.map((m) => m.type)).toEqual(['queue', 'queue']);
+  });
+
+  it('never gives a character to a queued client that closes, and moves those behind it up', async () => {
+    await start({ maxPlayers: 2 });
+    const a = await connectAndWelcome();
+    const b = await connectAndWelcome();
+    const c = await connect();
+    const d = await connect();
+    await c.nextMessage('queue');
+    await d.nextMessage('queue');
+
+    c.ws.close();
+    expect(await d.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+    await c.closed();
+    clock.advance(TICK_MS);
+    expect((await b.client.nextMessage('tick')).joined).toEqual([]);
+
+    a.client.ws.close();
+    // The server learns of the close a moment later, so tick until D is admitted and welcomed.
+    for (let i = 0; i < 50 && !d.messages.some((m) => m.type === 'welcome'); i++) {
+      clock.advance(TICK_MS);
+      await d.flush();
+    }
+    const welcomeForD = await d.nextMessage('welcome');
+    expect(welcomeForD.you).toBe(3); // C never took an id
+    expect(welcomeForD.characters.map((x) => x.id)).toEqual([2, 3]);
+
+    // B has seen every tick so far; D is the only character that joined it.
+    await b.client.flush();
+    const joined = [a.client, b.client, d].flatMap((client) =>
+      client.messages.flatMap((m) => (m.type === 'tick' ? m.joined.map((x) => x.id) : [])),
+    );
+    expect(joined.filter((id) => id !== 2 && id !== 3)).toEqual([]); // only B (2) and D (3) ever join
+    expect(b.client.messages.flatMap((m) => (m.type === 'tick' ? m.joined.map((x) => x.id) : []))).toEqual([3]);
+    expect(c.messages.map((m) => m.type)).toEqual(['queue']);
+  });
+
+  it('ignores messages from a queued client', async () => {
+    await start({ maxPlayers: 1 });
+    const a = await connectAndWelcome();
+    const b = await connect();
+    await b.nextMessage('queue');
+
+    b.send(JSON.stringify({ type: 'move', x: 1, y: 1 }));
+    b.send(JSON.stringify({ type: 'mode', mode: 'run' }));
+    await b.flush();
+    a.client.ws.close();
+    await b.flush();
+    for (let i = 0; i < 50 && !b.messages.some((m) => m.type === 'welcome'); i++) {
+      clock.advance(TICK_MS);
+      await b.flush();
+    }
+    const welcome = await b.nextMessage('welcome');
+    clock.advance(TICK_MS);
+    expect((await b.nextMessage('tick')).moved).toEqual([]);
+    expect(welcome.characters).toEqual([{ id: 2, x: 16, y: 16, speed: 500 }]);
+  });
+
+  it('steps every tick after a debug run mode message, then a move', async () => {
+    await start();
+    const { client: a, welcome } = await connectAndWelcome();
+    const { x, y } = welcome.characters[0]!;
+
+    a.send(JSON.stringify({ type: 'mode', mode: 'run' }));
+    move(a, x + 3, y);
+    await a.flush();
+
+    const perTick: CharacterView[][] = [];
+    for (let i = 0; i < 3; i++) {
+      clock.advance(TICK_MS);
+      perTick.push([...(await a.nextMessage('tick')).moved]);
+    }
+    expect(perTick).toEqual([
+      [{ id: 1, x: x + 1, y, speed: 1000, via: [] }],
+      [{ id: 1, x: x + 2, y, speed: 1000, via: [] }],
+      [{ id: 1, x: x + 3, y, speed: 1000, via: [] }],
+    ]);
+  });
+
+  it('sends the tiles passed through (as x and y only) for a two-step tick on a debug horse', async () => {
+    await start();
+    const { client: a, welcome } = await connectAndWelcome();
+    const { x, y } = welcome.characters[0]!;
+
+    a.send(JSON.stringify({ type: 'mode', mode: 'horse' }));
+    move(a, x, y - 6);
+    await a.flush();
+    for (let i = 0; i < 4; i++) clock.advance(TICK_MS);
+    await waitFor(() => a.messages.filter((m) => m.type === 'tick').length === 4);
+
+    // A character at rest holds one step, so the first tick is one step; after that, two a tick.
+    const moved = a.messages.flatMap((m) => (m.type === 'tick' ? m.moved : []));
+    expect(moved).toEqual([
+      { id: 1, x, y: y - 1, speed: 2000, via: [] },
+      { id: 1, x, y: y - 3, speed: 2000, via: [{ x, y: y - 2 }] },
+      { id: 1, x, y: y - 5, speed: 2000, via: [{ x, y: y - 4 }] },
+      { id: 1, x, y: y - 6, speed: 2000, via: [] },
+    ]);
+    for (const entry of moved) {
+      for (const tile of entry.via) expect(Object.keys(tile).sort()).toEqual(['x', 'y']);
+    }
+    for (const text of a.raw) {
+      expect(text).not.toContain('"path"');
+      expect(text).not.toContain('"progress"');
+      expect(text).not.toContain('"stepped"');
+    }
+  });
+
+  it('logs how many ticks it skipped after a stall', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await start();
+
+    clock.advance(10_000, 10_000);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[epochs] stalled: skipped 36 ticks');
   });
 });

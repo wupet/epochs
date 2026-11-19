@@ -5,11 +5,12 @@ import {
   createWorld,
   gridFromRows,
   parseClientMessage,
+  queueMessage,
   step,
   tickMessage,
   welcomeMessage,
 } from '@epochs/shared';
-import type { CharacterId, Intention, Tile, WorldState } from '@epochs/shared';
+import type { CharacterId, DebugMovementMode, Intention, Tile, WorldState } from '@epochs/shared';
 import { startTickLoop } from './tick-loop';
 import type { TickClock, TickLoop } from './tick-loop';
 import { TEST_MAP_ROWS, TEST_MAP_SPAWN } from './test-map';
@@ -19,7 +20,12 @@ export interface WorldServerOptions {
   readonly clock?: TickClock;
   readonly rows?: readonly string[];
   readonly spawn?: Tile;
+  /** How many may play at once; later connections wait in a queue. Default `MAX_PLAYERS`. */
+  readonly maxPlayers?: number;
 }
+
+/** How many players may be in the world at once. */
+export const MAX_PLAYERS = 100;
 
 export interface WorldServer {
   /** Starts listening and ticking. Resolves with the port actually bound (pass 0 for any free port). */
@@ -40,7 +46,9 @@ interface Connection {
 /**
  * The world server. It owns the one `WorldState`. Clients send intentions over a WebSocket; every
  * tick the server runs `step` on the queued intentions and sends each client what changed. A
- * character reaches a client only as `{ id, x, y }`, via the shared protocol builders.
+ * character reaches a client only as `{ id, x, y, speed }` (plus `via` when it moved), via the shared
+ * protocol builders. At most `maxPlayers` play at once; later connections wait in a first-come queue
+ * and are told their position whenever it changes. A waiting connection has no character and no id.
  */
 export function createWorldServer(options: WorldServerOptions = {}): WorldServer {
   const grid = gridFromRows(options.rows ?? TEST_MAP_ROWS);
@@ -49,8 +57,15 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   // tick is kept, so a flood of moves cannot grow the queue.
   let queuedLifecycle: Intention[] = [];
   let latestMoves = new Map<CharacterId, Tile>();
+  // Debug: the latest movement mode per character this tick, kept like the latest moves.
+  let latestModes = new Map<CharacterId, DebugMovementMode>();
   let nextId: CharacterId = 1;
+  const maxPlayers = options.maxPlayers ?? MAX_PLAYERS;
+  /** The playing connections: those with a character (a join has been queued). */
   const connections = new Map<CharacterId, Connection>();
+  /** Sockets waiting for a place, first come first served. The first is at position 1. */
+  const waiting: WebSocket[] = [];
+  const idOf = new WeakMap<WebSocket, CharacterId>();
   let loop: TickLoop | undefined;
 
   const httpServer = createServer((req, res) => {
@@ -69,23 +84,55 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   // being in use) would throw out of that emit instead of reaching the rejection in `listen`.
   wss.on('error', () => {});
 
-  wss.on('connection', (socket) => {
+  /** Gives the socket a character: an id and a queued join, to be welcomed after the tick that adds it. */
+  const admit = (socket: WebSocket): void => {
     const characterId = nextId++;
-    const connection: Connection = { characterId, socket, welcomed: false };
-    connections.set(characterId, connection);
+    idOf.set(socket, characterId);
+    connections.set(characterId, { characterId, socket, welcomed: false });
     queuedLifecycle.push({ kind: 'join', characterId, subtick: 0 });
+  };
+
+  /** Tells each waiting socket from `fromIndex` on its (new) 1-based position. */
+  const sendQueuePositions = (fromIndex: number): void => {
+    for (let i = fromIndex; i < waiting.length; i++) send(waiting[i]!, JSON.stringify(queueMessage(i + 1)));
+  };
+
+  wss.on('connection', (socket) => {
+    if (connections.size < maxPlayers) {
+      admit(socket);
+    } else {
+      waiting.push(socket);
+      sendQueuePositions(waiting.length - 1);
+    }
 
     socket.on('message', (data, isBinary) => {
-      if (isBinary) return;
+      const characterId = idOf.get(socket);
+      if (characterId === undefined || isBinary) return; // a waiting socket is ignored
       const message = parseClientMessage(data.toString(), grid);
-      if (message === null || message.type !== 'move') return; // mode messages: Task 4
-      latestMoves.set(characterId, { x: message.x, y: message.y });
+      if (message === null) return;
+      if (message.type === 'move') latestMoves.set(characterId, { x: message.x, y: message.y });
+      else latestModes.set(characterId, message.mode);
     });
     // A socket error is always followed by a close, which is where we clean up.
     socket.on('error', () => {});
     socket.on('close', () => {
+      const characterId = idOf.get(socket);
+      if (characterId === undefined) {
+        // It never played. Drop it from the queue; those behind it move up.
+        const index = waiting.indexOf(socket);
+        if (index === -1) return;
+        waiting.splice(index, 1);
+        sendQueuePositions(index);
+        return;
+      }
       connections.delete(characterId);
       queuedLifecycle.push({ kind: 'leave', characterId, subtick: 0 });
+      // The slot is free: the first in line plays, and everyone behind moves up.
+      const next = waiting.shift();
+      if (next !== undefined) {
+        admit(next);
+        sendQueuePositions(0);
+      }
     });
   });
 
@@ -99,12 +146,18 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
     }
   };
 
-  /** Queued joins and leaves in arrival order, then one move per character in ascending id order. */
+  /**
+   * Queued joins and leaves in arrival order, then one debug mode per character in ascending id order,
+   * then one move per character in ascending id order.
+   */
   const takeIntentions = (): Intention[] => {
+    const modes: Intention[] = [...latestModes.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([characterId, mode]) => ({ kind: 'mode', characterId, mode, subtick: 0 }));
     const moves: Intention[] = [...latestMoves.entries()]
       .sort(([a], [b]) => a - b)
       .map(([characterId, target]) => ({ kind: 'move', characterId, target, subtick: 0 }));
-    return [...queuedLifecycle, ...moves];
+    return [...queuedLifecycle, ...modes, ...moves];
   };
 
   const onTick = (): void => {
@@ -116,6 +169,7 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
       const next = step(prev, intentions);
       queuedLifecycle = [];
       latestMoves = new Map();
+      latestModes = new Map();
       state = next;
 
       const tick = JSON.stringify(tickMessage(prev, state));
@@ -145,7 +199,9 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
             reject(new Error('The server did not bind to a TCP port.'));
             return;
           }
-          loop = startTickLoop(onTick, options.clock);
+          loop = startTickLoop(onTick, options.clock, undefined, (skipped) =>
+            console.warn(`[epochs] stalled: skipped ${skipped} ticks`),
+          );
           resolve(address.port);
         });
       });
@@ -156,6 +212,8 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
       loop = undefined;
       for (const { socket } of connections.values()) socket.terminate();
       connections.clear();
+      const waitingSockets = waiting.splice(0);
+      for (const socket of waitingSockets) socket.terminate();
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       httpServer.closeAllConnections();
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
