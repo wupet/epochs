@@ -115,10 +115,14 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
     gridLayer.stroke({ width: 1, color: COLOR_LINE, alpha: 0.07 });
   }
 
-  /** The in-bounds tile under a screen position, using the layout as it is right now. */
+  // The layout of the last drawn frame. Clicks use it, so a click lands on the tile the player saw
+  // outlined, not on a neighbour the following camera has since scrolled to.
+  let lastLayout: Layout | null = null;
+
+  /** The in-bounds tile under a screen position, using the layout the player last saw. */
   function tileAt(clientX: number, clientY: number, grid: Grid): Tile | null {
     const rect = app.canvas.getBoundingClientRect();
-    const layout = currentLayout(grid, performance.now());
+    const layout = lastLayout ?? currentLayout(grid, performance.now());
     const tile = tileAtScreen(layout, clientX - rect.left, clientY - rect.top);
     return inBounds(grid, tile) ? tile : null;
   }
@@ -149,6 +153,8 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
     // Debug controls: running and riding get real rules later.
     const mode = DEBUG_MODE_KEYS[key];
     if (mode !== undefined) {
+      // Only once admitted: before the welcome (or while queued, or disconnected) there is no character to change.
+      if (world.you === null || !connected) return;
       requestedMode = mode;
       onModeIntent(mode);
       return;
@@ -171,8 +177,10 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
     if (grid === null) {
       gridLayer.clear();
       drawnGrid = null;
+      lastLayout = null;
     } else {
       const layout = currentLayout(grid, now);
+      lastLayout = layout;
       const viewW = window.innerWidth;
       const viewH = window.innerHeight;
       if (grid !== drawnGrid || layout.tileSize !== drawnTileSize || viewW !== drawnViewW || viewH !== drawnViewH) {

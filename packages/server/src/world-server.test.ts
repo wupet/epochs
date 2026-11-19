@@ -420,6 +420,42 @@ describe('world server', () => {
     expect(c.messages.map((m) => m.type)).toEqual(['queue']);
   });
 
+  it('never announces a queued client that is admitted and then closes before the next tick, and frees its slot', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await start({ maxPlayers: 1 });
+    const a = await connectAndWelcome();
+    const b = await connect();
+    expect(await b.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+
+    a.client.ws.close();
+    await a.client.closed();
+    // C joins the queue at position 1 only once B holds the slot, so this proves A's close was handled
+    // (B admitted, with no tick yet) before B closes.
+    const c = await connect();
+    expect(await c.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+
+    b.ws.close();
+    await b.closed();
+    // The server learns of B's close a moment later: tick until C is admitted and welcomed.
+    for (let i = 0; i < 50 && !c.messages.some((m) => m.type === 'welcome'); i++) {
+      clock.advance(TICK_MS);
+      await c.flush();
+    }
+    const welcomeForC = await c.nextMessage('welcome');
+    clock.advance(TICK_MS);
+    clock.advance(TICK_MS);
+    await c.flush();
+
+    expect(welcomeForC.you).toBe(3); // B took id 2 and never used it
+    expect(welcomeForC.characters.map((x) => x.id)).toEqual([3]);
+    // Nobody ever sees B (id 2) join, and nobody sees it leave either.
+    const ticks = c.messages.filter((m): m is TickMessage => m.type === 'tick');
+    expect(ticks.flatMap((m) => m.joined.map((x) => x.id))).toEqual([]);
+    expect(ticks.flatMap((m) => m.left)).toEqual([]);
+    expect(b.messages.map((m) => m.type)).toEqual(['queue']);
+    expect(errors).not.toHaveBeenCalled();
+  });
+
   it('ignores messages from a queued client', async () => {
     await start({ maxPlayers: 1 });
     const a = await connectAndWelcome();

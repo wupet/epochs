@@ -53,11 +53,25 @@ export function positionAt(motion: Motion, nowMs: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-/** A new slide through `through`, starting from wherever the motion is drawn right now, so nothing jumps. */
+/**
+ * The most points a slide may hold (the drawn start plus up to 7 more). When several ticks arrive at
+ * once (catch-up after a stall or a backgrounded tab), the old path is kept so the slide does not cut
+ * across wall corners, but the oldest unvisited points beyond this cap are dropped so the slide
+ * catches up within MAX_SLIDE_POINTS - 1 segment times instead of replaying every missed tile.
+ */
+export const MAX_SLIDE_POINTS = 8;
+
+/**
+ * A new slide starting from wherever the motion is drawn right now (so nothing jumps), continuing
+ * through the old path's points not yet reached, then through `through`. Capped at MAX_SLIDE_POINTS.
+ */
 export function retarget(motion: Motion, through: readonly Point[], nowMs: number, msPerSegment: number): Motion {
-  return {
-    points: [positionAt(motion, nowMs), ...through.map((p) => ({ x: p.x, y: p.y }))],
-    startMs: nowMs,
-    msPerSegment,
-  };
+  const { points, startMs, msPerSegment: oldMs } = motion;
+  // The segment being drawn; a still motion (or one that has finished) has nothing left to visit.
+  const progress = points.length === 1 || oldMs <= 0 ? points.length : Math.max(0, (nowMs - startMs) / oldMs);
+  const index = Math.min(Math.floor(progress), points.length - 1);
+  const remaining = points.slice(index + 1);
+  const rest = [...remaining, ...through].map((p) => ({ x: p.x, y: p.y }));
+  const kept = rest.length > MAX_SLIDE_POINTS - 1 ? rest.slice(rest.length - (MAX_SLIDE_POINTS - 1)) : rest;
+  return { points: [positionAt(motion, nowMs), ...kept], startMs: nowMs, msPerSegment };
 }

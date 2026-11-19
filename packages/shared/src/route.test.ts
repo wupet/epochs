@@ -25,6 +25,16 @@ function route(grid: Grid, from: Tile, to: Tile): Route {
   return result;
 }
 
+describe('route to a far reachable target', () => {
+  it('routes exactly to a reachable target more than 16 tiles away on an open grid', () => {
+    const result = route(open(40, 3), t(0, 1), t(39, 1));
+    expect(result.reachedTarget).toBe(true);
+    expect(result.destination).toEqual(t(39, 1));
+    expect(result.path).toHaveLength(39);
+    expect(result.path[result.path.length - 1]).toEqual(t(39, 1));
+  });
+});
+
 describe('nearness', () => {
   it('is the Chebyshev distance: a diagonal tile is 1 away', () => {
     expect(nearness(t(0, 0), t(3, 4))).toBe(4);

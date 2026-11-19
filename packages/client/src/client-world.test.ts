@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { QueueMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ClientWorld, parseServerMessage } from './client-world';
-import { msPerTile } from './motion';
+import { MAX_SLIDE_POINTS, msPerTile } from './motion';
 
 const WALK_MS = msPerTile(500);
 
@@ -77,7 +77,9 @@ describe('ClientWorld', () => {
     const mid = world.positionOf(1, WALK_MS / 2);
     world.applyTick(tick(12, { moved: [{ id: 1, x: 2, y: 2, speed: 500, via: [] }] }), WALK_MS / 2);
     expect(world.positionOf(1, WALK_MS / 2)).toEqual(mid);
-    expect(world.positionOf(1, WALK_MS / 2 + WALK_MS)).toEqual({ x: 2, y: 2 });
+    // It still goes through the tile it was heading for, then on to the new one.
+    expect(world.positionOf(1, WALK_MS / 2 + WALK_MS)).toEqual({ x: 2, y: 0 });
+    expect(world.positionOf(1, WALK_MS / 2 + 2 * WALK_MS)).toEqual({ x: 2, y: 2 });
   });
 
   it('adds joined characters still, and removes left ones', () => {
@@ -117,7 +119,21 @@ describe('ClientWorld', () => {
       expect(world.applyTick(tick(10 + i, { moved: [{ id: 1, x: i % 5, y: 1, speed: 500, via: [] }] }), 7000)).toBe(true);
     }
     expect(world.tileOf(1)).toEqual({ x: 0, y: 1 });
-    expect(world.positionOf(1, 7000 + WALK_MS)).toEqual({ x: 0, y: 1 });
+    // The slide holds at most MAX_SLIDE_POINTS points, so it catches up within that many segments.
+    const segments = MAX_SLIDE_POINTS - 1;
+    expect(world.positionOf(1, 7000 + segments * WALK_MS)).toEqual({ x: 0, y: 1 });
+    expect(world.positionOf(1, 7000 + (segments - 1) * WALK_MS)).not.toEqual({ x: 0, y: 1 });
+  });
+
+  it('keeps the path through two ticks applied at the same instant, never cutting the corner', () => {
+    const world = joined();
+    world.applyTick(tick(11, { moved: [{ id: 1, x: 1, y: 0, speed: 500, via: [] }] }), 0);
+    world.applyTick(tick(12, { moved: [{ id: 1, x: 1, y: 1, speed: 500, via: [] }] }), 0);
+    expect(world.positionOf(1, WALK_MS)).toEqual({ x: 1, y: 0 });
+    expect(world.positionOf(1, 2 * WALK_MS)).toEqual({ x: 1, y: 1 });
+    for (let ms = 0; ms <= 2 * WALK_MS; ms += 10) {
+      expect(world.positionOf(1, ms)).not.toEqual({ x: 0.5, y: 0.5 });
+    }
   });
 });
 

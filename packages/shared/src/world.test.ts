@@ -369,22 +369,46 @@ describe('step: movement speed', () => {
     expect(characterOf(world, 1).stepped).toEqual([]);
   });
 
-  it('spam-clicking between two adjacent tiles never beats the walking pace', () => {
-    const base = movementWorld();
+  /**
+   * Every tick, sends a move to whichever of (5,5) and (6,5) the walker is NOT on, so every tick
+   * re-routes it one tile away. Returns how many ticks changed its tile, and the most tiles stepped
+   * in one tick, and whether two consecutive ticks both changed it.
+   */
+  function spamBetweenTwoTiles(speed: number, ticks: number) {
+    const base = withSpeed(movementWorld(), speed);
     let world: WorldState = { ...base, characters: [{ ...characterOf(base, 1), tile: t(5, 5) }] };
-    const targets = [t(5, 5), t(6, 5)];
     let changedTicks = 0;
+    let mostStepped = 0;
+    let consecutive = false;
     let previousChanged = false;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < ticks; i++) {
       const before = tileOf(world, 1);
-      world = step(world, [move(1, targets[i % 2]!)]);
+      const other = sameTile(before, t(5, 5)) ? t(6, 5) : t(5, 5);
+      world = step(world, [move(1, other)]);
       const changed = !sameTile(before, tileOf(world, 1));
       if (changed) changedTicks++;
-      expect(changed && previousChanged).toBe(false); // never two consecutive steps
+      if (changed && previousChanged) consecutive = true;
       previousChanged = changed;
+      mostStepped = Math.max(mostStepped, characterOf(world, 1).stepped.length);
     }
-    expect(changedTicks).toBeLessThanOrEqual(21);
-    expect(changedTicks).toBeGreaterThan(0);
+    return { changedTicks, mostStepped, consecutive };
+  }
+
+  it('spam-clicking away from a walker on one of two adjacent tiles gives exactly one step every 2 ticks', () => {
+    // The walker starts rested (progress 1000): it steps on ticks 1, 3, 5 ... 39, and each re-route
+    // keeps its progress, so it never steps two ticks in a row. 20 steps in 40 ticks.
+    const { changedTicks, mostStepped, consecutive } = spamBetweenTwoTiles(DEFAULT_SPEED, 40);
+    expect(consecutive).toBe(false); // never two consecutive steps
+    expect(mostStepped).toBe(1);
+    expect(changedTicks).toBe(20);
+  });
+
+  it('the same spam on a horse is capped by the one-tile path, not by speed: one step per tick', () => {
+    // A horse has 2000 speed, but each re-route is a one-tile path and resting caps progress at one
+    // step, so it steps once on every tick: 40 steps in 40 ticks, never 2 in a tick.
+    const { changedTicks, mostStepped } = spamBetweenTwoTiles(MAX_SPEED, 40);
+    expect(mostStepped).toBe(1);
+    expect(changedTicks).toBe(40);
   });
 
   it('a re-route on the tick after a step does not step that tick, and steps on the one after', () => {
