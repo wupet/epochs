@@ -27,6 +27,7 @@ async function main(): Promise<void> {
   const renderer = await startRenderer({
     world,
     onMoveIntent: (tile) => connection?.sendMove(tile),
+    onModeIntent: (mode) => connection?.sendMode(mode),
   });
 
   connection = connect({

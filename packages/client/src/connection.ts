@@ -2,7 +2,7 @@
  * The WebSocket to the world server. Parses what arrives and sends intentions. No reconnecting: a
  * page reload connects again.
  */
-import type { MoveMessage, ServerMessage, Tile } from '@epochs/shared';
+import type { DebugMovementMode, ModeMessage, MoveMessage, ServerMessage, Tile } from '@epochs/shared';
 import { parseServerMessage } from './client-world';
 
 export interface ConnectionHandlers {
@@ -15,6 +15,8 @@ export interface Connection {
   readonly isOpen: boolean;
   /** Send an intention to walk to `tile`. Does nothing unless the socket is open. */
   sendMove(tile: Tile): void;
+  /** Send a debug movement mode (walk, run or horse). Does nothing unless the socket is open. */
+  sendMode(mode: DebugMovementMode): void;
 }
 
 export function connect(handlers: ConnectionHandlers): Connection {
@@ -43,6 +45,11 @@ export function connect(handlers: ConnectionHandlers): Connection {
     sendMove(tile: Tile): void {
       if (!open) return;
       const message: MoveMessage = { type: 'move', x: tile.x, y: tile.y };
+      socket.send(JSON.stringify(message));
+    },
+    sendMode(mode: DebugMovementMode): void {
+      if (!open) return;
+      const message: ModeMessage = { type: 'mode', mode };
       socket.send(JSON.stringify(message));
     },
   };
