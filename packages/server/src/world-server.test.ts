@@ -503,19 +503,22 @@ describe('world server', () => {
     const { client: a, welcome } = await connectAndWelcome();
     const { x, y } = welcome.characters[0]!;
 
+    // Rest one tick in horse mode first, so the horse holds a full tick's worth and sets off at full pace.
     a.send(JSON.stringify({ type: 'mode', mode: 'horse' }));
+    await a.flush();
+    clock.advance(TICK_MS);
+    await a.nextMessage('tick');
     move(a, x, y - 6);
     await a.flush();
-    for (let i = 0; i < 4; i++) clock.advance(TICK_MS);
+    for (let i = 0; i < 3; i++) clock.advance(TICK_MS);
     await waitFor(() => a.messages.filter((m) => m.type === 'tick').length === 4);
 
-    // A character at rest holds one step, so the first tick is one step; after that, two a tick.
+    // A rested horse moves two tiles on every tick, from the first.
     const moved = a.messages.flatMap((m) => (m.type === 'tick' ? m.moved : []));
     expect(moved).toEqual([
-      { id: 1, x, y: y - 1, speed: 2000, via: [] },
-      { id: 1, x, y: y - 3, speed: 2000, via: [{ x, y: y - 2 }] },
-      { id: 1, x, y: y - 5, speed: 2000, via: [{ x, y: y - 4 }] },
-      { id: 1, x, y: y - 6, speed: 2000, via: [] },
+      { id: 1, x, y: y - 2, speed: 2000, via: [{ x, y: y - 1 }] },
+      { id: 1, x, y: y - 4, speed: 2000, via: [{ x, y: y - 3 }] },
+      { id: 1, x, y: y - 6, speed: 2000, via: [{ x, y: y - 5 }] },
     ]);
     for (const entry of moved) {
       for (const tile of entry.via) expect(Object.keys(tile).sort()).toEqual(['x', 'y']);

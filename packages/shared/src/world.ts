@@ -12,6 +12,7 @@ import {
   MAX_STEPS_PER_TICK,
   STEP,
   isDebugMovementMode,
+  restCap,
 } from './movement';
 import type { DebugMovementMode } from './movement';
 
@@ -96,7 +97,8 @@ export function findSpawnTile(state: WorldState): Tile {
  * 5. Move every character along its path: while it has a path, at least `STEP` of progress, and
  *    has taken fewer than `MAX_STEPS_PER_TICK` steps this tick, take the next step if it is still
  *    legal (else clear the path), paying `STEP`. Then add the speed to the progress; a character
- *    with no path left keeps at most one step of progress, so resting never banks free steps.
+ *    with no path left keeps at most `restCap(speed)`: one tick's worth of movement at its current
+ *    speed (after this tick's mode change), never less than one step. Resting never banks free steps.
  * 6. Add one to the tick.
  */
 export function step(state: WorldState, intentions: readonly Intention[]): WorldState {
@@ -115,7 +117,7 @@ export function step(state: WorldState, intentions: readonly Intention[]): World
         tile,
         path: [],
         speed: DEFAULT_SPEED,
-        progress: STEP,
+        progress: restCap(DEFAULT_SPEED),
         stepped: [],
       });
       characters.sort((a, b) => a.id - b.id);
@@ -162,7 +164,7 @@ export function step(state: WorldState, intentions: readonly Intention[]): World
       progress -= STEP;
     }
     progress += c.speed;
-    if (path.length === 0) progress = Math.min(progress, STEP);
+    if (path.length === 0) progress = Math.min(progress, restCap(c.speed));
     return { id: c.id, tile, path, speed: c.speed, progress, stepped };
   });
 

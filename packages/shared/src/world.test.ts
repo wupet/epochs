@@ -341,13 +341,37 @@ describe('step: movement speed', () => {
     expect(tileOf(end, 1)).toEqual(t(5, 5));
   });
 
-  it('a rider on a horse moves 1, then 2, then 2 tiles, and records the tiles entered in order', () => {
-    const { stepped, end } = stepTicks(movementWorld(), [[mode(1, 'horse'), move(1, t(6, 5))], ...idle(3)]);
-    expect(stepped.map((s) => s.length)).toEqual([1, 2, 2, 0]);
-    expect(stepped[0]).toEqual([t(2, 5)]);
-    expect(stepped[1]).toEqual([t(3, 5), t(4, 5)]);
-    expect(stepped[2]).toEqual([t(5, 5), t(6, 5)]);
-    expect(tileOf(end, 1)).toEqual(t(6, 5));
+  it('a rested rider sets off at full pace: 2 tiles on the first tick, and records the tiles entered in order', () => {
+    // Switch to horse and rest one tick, so the horse's rest cap (one tick's worth, 2000) is banked.
+    let world = step(movementWorld(), [mode(1, 'horse')]);
+    expect(characterOf(world, 1).progress).toBe(MAX_SPEED);
+    const { stepped, end } = stepTicks(world, [[move(1, t(7, 5))], ...idle(3)]);
+    expect(stepped.map((s) => s.length)).toEqual([2, 2, 2, 0]);
+    expect(stepped[0]).toEqual([t(2, 5), t(3, 5)]);
+    expect(stepped[1]).toEqual([t(4, 5), t(5, 5)]);
+    expect(stepped[2]).toEqual([t(6, 5), t(7, 5)]);
+    expect(tileOf(end, 1)).toEqual(t(7, 5));
+  });
+
+  it('a rested rider sets off at full pace', () => {
+    // From (1,5) on open ground: horse speed 2000, rest cap max(STEP, 2000) = 2000.
+    const rested = step(movementWorld(), [mode(1, 'horse')]);
+    const { stepped } = stepTicks(rested, [[move(1, t(11, 5))], ...idle(4)]);
+    expect(stepped.map((s) => s.length)).toEqual([2, 2, 2, 2, 2]); // 10 tiles in 5 ticks, 2 on the very first
+    // A rested runner and a rested walker: no change from before.
+    const runner = step(movementWorld(), [mode(1, 'run')]);
+    expect(stepTicks(runner, [[move(1, t(5, 5))], ...idle(3)]).ticks).toEqual([1, 2, 3, 4]);
+    expect(stepTicks(movementWorld(), [[move(1, t(5, 5))], ...idle(6)]).ticks).toEqual([1, 3, 5, 7]);
+  });
+
+  it('after resting, a horse switched to walk banks only one step', () => {
+    let world = step(movementWorld(), [mode(1, 'horse')]);
+    for (let i = 0; i < 3; i++) world = step(world, []);
+    expect(characterOf(world, 1).progress).toBe(MAX_SPEED); // a horse at rest holds one tick's worth
+    world = step(world, [mode(1, 'walk')]); // still idle: capped by the walk cap
+    expect(characterOf(world, 1).progress).toBeLessThanOrEqual(STEP);
+    const { ticks } = stepTicks(world, [[move(1, t(5, 5))], ...idle(6)]);
+    expect(ticks).toEqual([1, 3, 5, 7]); // steps on ticks 1, 3, 5 of a new walk
   });
 
   it('a character with speed 750 steps on ticks 1, 3, 4, 5, 7 and 8', () => {
@@ -369,46 +393,74 @@ describe('step: movement speed', () => {
     expect(characterOf(world, 1).stepped).toEqual([]);
   });
 
+  /** Millitiles a standing character may hold: one tick's worth at its speed, never less than one step. */
+  const restCap = (speed: number): number => Math.max(STEP, speed);
+  const SPEEDS = [
+    ['walk', DEBUG_MOVEMENT_MODES.walk],
+    ['run', DEBUG_MOVEMENT_MODES.run],
+    ['horse', DEBUG_MOVEMENT_MODES.horse],
+  ] as const;
+
   /**
-   * Every tick, sends a move to whichever of (5,5) and (6,5) the walker is NOT on, so every tick
-   * re-routes it one tile away. Returns how many ticks changed its tile, and the most tiles stepped
-   * in one tick, and whether two consecutive ticks both changed it.
+   * Spam-clicks for `ticks` ticks. `targetFor(tick, tile)` gives the move sent that tick. The
+   * character starts on `start`, rested at this speed. Returns how many ticks changed its tile, the
+   * most tiles stepped in one tick, the total tiles moved, and whether two consecutive ticks both
+   * changed it.
    */
-  function spamBetweenTwoTiles(speed: number, ticks: number) {
+  function spam(
+    speed: number,
+    start: Tile,
+    ticks: number,
+    targetFor: (tick: number, tile: Tile) => Tile,
+  ) {
     const base = withSpeed(movementWorld(), speed);
-    let world: WorldState = { ...base, characters: [{ ...characterOf(base, 1), tile: t(5, 5) }] };
+    let world: WorldState = {
+      ...base,
+      characters: [{ ...characterOf(base, 1), tile: start, progress: restCap(speed) }],
+    };
     let changedTicks = 0;
     let mostStepped = 0;
+    let total = 0;
     let consecutive = false;
     let previousChanged = false;
     for (let i = 0; i < ticks; i++) {
       const before = tileOf(world, 1);
-      const other = sameTile(before, t(5, 5)) ? t(6, 5) : t(5, 5);
-      world = step(world, [move(1, other)]);
+      world = step(world, [move(1, targetFor(i, before))]);
       const changed = !sameTile(before, tileOf(world, 1));
       if (changed) changedTicks++;
       if (changed && previousChanged) consecutive = true;
       previousChanged = changed;
-      mostStepped = Math.max(mostStepped, characterOf(world, 1).stepped.length);
+      const count = characterOf(world, 1).stepped.length;
+      mostStepped = Math.max(mostStepped, count);
+      total += count;
     }
-    return { changedTicks, mostStepped, consecutive };
+    return { changedTicks, mostStepped, total, consecutive };
   }
 
-  it('spam-clicking away from a walker on one of two adjacent tiles gives exactly one step every 2 ticks', () => {
-    // The walker starts rested (progress 1000): it steps on ticks 1, 3, 5 ... 39, and each re-route
-    // keeps its progress, so it never steps two ticks in a row. 20 steps in 40 ticks.
-    const { changedTicks, mostStepped, consecutive } = spamBetweenTwoTiles(DEFAULT_SPEED, 40);
-    expect(consecutive).toBe(false); // never two consecutive steps
-    expect(mostStepped).toBe(1);
-    expect(changedTicks).toBe(20);
+  // (a) every tick, click whichever of two adjacent tiles you are not on.
+  const adjacent = (_tick: number, tile: Tile): Tile => (sameTile(tile, t(5, 5)) ? t(6, 5) : t(5, 5));
+  // (b) alternate each tick between two tiles 6 apart in a straight line, wherever you are.
+  const sixApart = (tick: number): Tile => (tick % 2 === 0 ? t(9, 5) : t(3, 5));
+
+  it.each(SPEEDS)('spam-clicking at %s never beats the pace, on two adjacent tiles', (_name, speed) => {
+    const { mostStepped, total, consecutive, changedTicks } = spam(speed, t(5, 5), 40, adjacent);
+    expect(mostStepped).toBeLessThanOrEqual(MAX_STEPS_PER_TICK);
+    expect(total).toBeLessThanOrEqual((restCap(speed) + 40 * speed) / STEP);
+    if (speed === DEBUG_MOVEMENT_MODES.walk) expect(consecutive).toBe(false);
+    // Hand-traced: each re-route is a one-tile path, so at most one step per tick.
+    // Walk: progress 1000 steps on ticks 1, 3, ... 39 (a step leaves 0, +500 each tick): 20 steps.
+    // Run: 1000 steps, leaves 0, +1000 back to 1000: a step every tick, 40.
+    // Horse: 2000 steps once (path is one tile), leaves 1000, +2000, capped back to 2000: 40.
+    const expected = speed === DEBUG_MOVEMENT_MODES.walk ? 20 : 40;
+    expect(changedTicks).toBe(expected);
+    expect(total).toBe(expected);
   });
 
-  it('the same spam on a horse is capped by the one-tile path, not by speed: one step per tick', () => {
-    // A horse has 2000 speed, but each re-route is a one-tile path and resting caps progress at one
-    // step, so it steps once on every tick: 40 steps in 40 ticks, never 2 in a tick.
-    const { changedTicks, mostStepped } = spamBetweenTwoTiles(MAX_SPEED, 40);
-    expect(mostStepped).toBe(1);
-    expect(changedTicks).toBe(40);
+  it.each(SPEEDS)('spam-clicking at %s never beats the pace, between two tiles 6 apart', (_name, speed) => {
+    const { mostStepped, total, consecutive } = spam(speed, t(3, 5), 40, sixApart);
+    expect(mostStepped).toBeLessThanOrEqual(MAX_STEPS_PER_TICK);
+    expect(total).toBeLessThanOrEqual((restCap(speed) + 40 * speed) / STEP);
+    if (speed === DEBUG_MOVEMENT_MODES.walk) expect(consecutive).toBe(false);
   });
 
   it('a re-route on the tick after a step does not step that tick, and steps on the one after', () => {
@@ -420,11 +472,12 @@ describe('step: movement speed', () => {
     expect(tileOf(world, 1)).toEqual(t(2, 6));
   });
 
-  it('resting caps progress at one step, at any speed', () => {
-    for (const speed of [DEFAULT_SPEED, 750, MAX_SPEED]) {
+  it('resting caps progress at one tick of movement at the current speed, never less than one step', () => {
+    const expected = new Map([[DEFAULT_SPEED, STEP], [750, STEP], [DEBUG_MOVEMENT_MODES.run, STEP], [MAX_SPEED, MAX_SPEED]]);
+    for (const [speed, cap] of expected) {
       let world = withSpeed(movementWorld(), speed);
       for (let i = 0; i < 10; i++) world = step(world, []);
-      expect(characterOf(world, 1).progress).toBe(STEP);
+      expect(characterOf(world, 1).progress).toBe(cap);
     }
   });
 

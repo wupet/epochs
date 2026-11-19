@@ -20,7 +20,7 @@ Approved by Peter on 2026-11-19. These are follow-ups to milestone 0.2, decided 
 10. **Debug speed keys.** Keys switch between walk (2 tiles/s), run (4 tiles/s) and horse (8 tiles/s). **These are debug controls**, marked as such in the docs and the code. Running and riding get real rules later; this is only for testing feel.
 11. **Zoom.** Keys zoom in and out.
 12. **Pulse.** The tick pulse is off by default.
-13. **No free steps.** While a character stands still, their progress builds up toward a step but is capped at one full step. After a rest they step on the next tick, but repeated clicks can never beat their normal pace. There is a test for spam-clicking.
+13. **No free steps.** *(Updated 2026-11-19 after playtesting.)* While a character stands still, their progress builds up toward a step but is capped at one tick's worth at the current speed, but never less than one step, so a rested walker still steps on the next tick. Every speed therefore sets off at full pace (a rested rider moves 2 tiles on the first tick), and repeated clicks can never beat their normal pace. There is a test for spam-clicking at every speed. *(Peter, 2026-11-19; this replaces the original cap of one full step. The wording "one tick's worth, never less than one step" is the controller's reading.)*
 
 ## Approved builder's calls
 
@@ -35,22 +35,22 @@ Approved by Peter on 2026-11-19. These are follow-ups to milestone 0.2, decided 
 - `STEP = 1000` millitiles makes one tile.
 - The debug modes are walk = 500, run = 1000 and horse = 2000.
 - `MAX_STEPS_PER_TICK = 2`, and speeds above 2000 are not allowed.
-- Every character starts walking, with `progress = STEP`: rested, so it can step on the next tick.
+- Every character starts walking, with `progress = max(STEP, DEFAULT_SPEED)` (= `STEP`): rested, so it can step on the next tick.
 
 **Movement each tick**, per character, after routes are set:
 1. While the character has a path, `progress >= STEP` and fewer than 2 steps have been taken this tick:
    - if the next tile is a legal step, take it and subtract `STEP`;
    - otherwise clear the path and stop.
 2. Add `speed` to `progress`.
-3. If the path is now empty, cap `progress` at `STEP`.
+3. If the path is now empty, cap `progress` at `max(STEP, speed)`, using the character's speed after this tick's mode change: one tick's worth at the current speed, but never less than one step, so a rested walker still steps on the next tick. *(Updated 2026-11-19 after playtesting; this was `STEP`.)*
 
 This means:
 - A rested walker steps on the next tick, then every 2 ticks.
 - A runner steps every tick.
-- A rider steps 2 tiles every tick, after a first tick of one step.
+- A rested rider steps 2 tiles every tick, from the first. *(Updated 2026-11-19; it used to take one step on the first tick.)*
 - A speed of 750 steps on 3 ticks out of every 4.
 - Changing course keeps the built-up progress.
-- Spam-clicking can't beat the pace: progress never exceeds one step while standing still, and a step always costs a full step of progress.
+- Spam-clicking can't beat the pace: progress never exceeds `max(STEP, speed)` while standing still (the most it could earn in a tick), and a step always costs a full step of progress.
 
 **Steps taken.** The character records the tiles it entered this tick, as `stepped` (plain data). The tick message uses it so clients can slide through the tile passed on.
 

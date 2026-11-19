@@ -21,6 +21,15 @@ export const DEBUG_MOVEMENT_MODES = { walk: 500, run: 1000, horse: 2000 } as con
 
 export type DebugMovementMode = keyof typeof DEBUG_MOVEMENT_MODES;
 
+/**
+ * The most progress a standing character may hold: one tick's worth of movement at its current
+ * speed, but never less than one step, so a rested walker still steps on the next tick. Resting
+ * therefore never banks free steps, and every speed sets off at full pace. *(Peter, 2026-11-19.)*
+ */
+export function restCap(speed: number): number {
+  return Math.max(STEP, speed);
+}
+
 /** Every character starts out walking. */
 export const DEFAULT_SPEED = DEBUG_MOVEMENT_MODES.walk;
 

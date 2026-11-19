@@ -89,7 +89,7 @@ Follow-ups to 0.2, decided by Peter after playing it (2026-11-19). The design is
 10. **Debug speed keys.** Keys 1, 2 and 3 switch between walk (2 tiles/s), run (4 tiles/s) and horse (8 tiles/s). **These are debug controls**, for testing feel only. Running and riding get real rules later.
 11. **Zoom.** Keys zoom in and out (`+` or `=` in, `-` out; approved builder's call).
 12. **Pulse.** The tick pulse is off by default (`P` toggles it, `?pulse=1` starts with it on; approved builder's call).
-13. **No free steps.** While a character stands still, their progress builds up toward a step but is capped at one full step. After a rest they step on the next tick, but repeated clicks can never beat their normal pace. There is a test for spam-clicking.
+13. **No free steps.** While a character stands still, their progress builds up toward a step but is capped at one tick's worth at the current speed, but never less than one step, so a rested walker still steps on the next tick. Every speed therefore sets off at full pace (a rested rider moves 2 tiles on the first tick), and repeated clicks can never beat their normal pace. There is a test for spam-clicking at every speed. *(Peter, 2026-11-19: this replaces the earlier cap of one full step. The wording "one tick's worth, never less than one step" is the controller's reading, which keeps the earlier rule that a rested walker steps on the next tick.)*
 
 ## Milestone 0.3: Content checker
 
