@@ -1,0 +1,14 @@
+{
+  "name": "@epochs/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless runner, content checker, and later the simulation tools.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@epochs/shared": "*"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Shared rules are pure: no Node APIs, no DOM, no timers.
+    // An empty `types` and an ES-only `lib` make `process`, `fs`, `setTimeout`,
+    // `window`, and friends fail to typecheck here.
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@epochs/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure, deterministic game rules shared by server, client, and tools.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json"
+  }
+}

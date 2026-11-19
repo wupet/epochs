@@ -1,0 +1,17 @@
+{
+  "name": "@epochs/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Rendering, input, interpolation, and interface.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@epochs/shared": "*"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@epochs/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The world server: tick loop, connections, authority.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@epochs/shared": "*"
+  }
+}
