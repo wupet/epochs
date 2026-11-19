@@ -36,7 +36,7 @@ async function main(): Promise<void> {
       const now = performance.now();
       if (message.type === 'welcome') {
         world.applyWelcome(message, now);
-      } else if (world.applyTick(message, now)) {
+      } else if (message.type === 'tick' && world.applyTick(message, now)) {
         renderer.noteTick(now);
         timing.record(now);
       }

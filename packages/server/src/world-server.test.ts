@@ -188,11 +188,11 @@ describe('world server', () => {
     }
 
     expect(perTick).toEqual([
-      [{ id: 1, x: origin.x + 1, y: origin.y }],
+      [{ id: 1, x: origin.x + 1, y: origin.y, speed: 500, via: [] }],
       [],
-      [{ id: 1, x: origin.x + 2, y: origin.y }],
+      [{ id: 1, x: origin.x + 2, y: origin.y, speed: 500, via: [] }],
       [],
-      [{ id: 1, x: origin.x + 3, y: origin.y }],
+      [{ id: 1, x: origin.x + 3, y: origin.y, speed: 500, via: [] }],
       [],
     ]);
   });
@@ -205,7 +205,7 @@ describe('world server', () => {
     move(a, x, y - 6);
     await a.flush();
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y: y - 1 }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y: y - 1, speed: 500, via: [] }]);
 
     move(a, x, y + 6);
     await a.flush();
@@ -213,7 +213,7 @@ describe('world server', () => {
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([]);
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y, speed: 500, via: [] }]);
   });
 
   it('applies only the latest of many moves sent within one tick', async () => {
@@ -226,12 +226,12 @@ describe('world server', () => {
     await a.flush();
 
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, via: [] }]);
     expect(a.ws.readyState).toBe(WebSocket.OPEN);
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([]); // a rest tick: walking is a tile every 2 ticks
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y, speed: 500, via: [] }]);
   });
 
   it('ignores bad messages, keeps the socket open, and still accepts a valid move', async () => {
@@ -252,10 +252,10 @@ describe('world server', () => {
     move(a, x + 2, y);
     await a.flush();
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, via: [] }]);
   });
 
-  it('never sends a path, and only { id, x, y } for a character', async () => {
+  it('never sends a path, progress or stepped, and only { id, x, y, speed } (plus via on moved) for a character', async () => {
     await start();
     const a = await connectAndWelcome();
     const b = await connectAndWelcome();
@@ -270,18 +270,27 @@ describe('world server', () => {
 
     const welcomeKeys = ['characters', 'grid', 'tick', 'type', 'you'];
     const tickKeys = ['joined', 'left', 'moved', 'tick', 'type'];
-    const characterKeys = ['id', 'x', 'y'];
+    const characterKeys = ['id', 'speed', 'x', 'y'];
+    const movedKeys = ['id', 'speed', 'via', 'x', 'y'];
     // B's welcome plus twelve ticks (six tiles of walking).
     expect(b.client.messages).toHaveLength(13);
     for (const message of b.client.messages) {
       expect(Object.keys(message).sort()).toEqual(message.type === 'welcome' ? welcomeKeys : tickKeys);
-      const characters =
-        message.type === 'welcome'
-          ? message.characters
-          : [...(message as TickMessage).moved, ...(message as TickMessage).joined];
-      for (const character of characters) expect(Object.keys(character).sort()).toEqual(characterKeys);
+      const tick = message as TickMessage;
+      const plain = message.type === 'welcome' ? message.characters : tick.joined;
+      for (const character of plain) expect(Object.keys(character).sort()).toEqual(characterKeys);
+      if (message.type === 'tick') {
+        for (const character of tick.moved) {
+          expect(Object.keys(character).sort()).toEqual(movedKeys);
+          for (const tile of character.via) expect(Object.keys(tile).sort()).toEqual(['x', 'y']);
+        }
+      }
     }
-    for (const text of b.client.raw) expect(text).not.toContain('"path"');
+    for (const text of b.client.raw) {
+      expect(text).not.toContain('"path"');
+      expect(text).not.toContain('"progress"');
+      expect(text).not.toContain('"stepped"');
+    }
     expect(b.client.messages.some((m) => m.type === 'tick' && m.moved.length > 0)).toBe(true);
   });
 

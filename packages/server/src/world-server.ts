@@ -78,7 +78,7 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
     socket.on('message', (data, isBinary) => {
       if (isBinary) return;
       const message = parseClientMessage(data.toString(), grid);
-      if (message === null) return;
+      if (message === null || message.type !== 'move') return; // mode messages: Task 4
       latestMoves.set(characterId, { x: message.x, y: message.y });
     });
     // A socket error is always followed by a close, which is where we clean up.

@@ -5,6 +5,7 @@ import {
   gridFromRows,
   gridToRows,
   parseClientMessage,
+  queueMessage,
   step,
   tickMessage,
   viewOf,
@@ -18,6 +19,12 @@ function open(width: number, height: number): Grid {
 
 const join = (characterId: number): Intention => ({ kind: 'join', characterId, subtick: 0 });
 const leave = (characterId: number): Intention => ({ kind: 'leave', characterId, subtick: 0 });
+const mode = (characterId: number, m: 'walk' | 'run' | 'horse'): Intention => ({
+  kind: 'mode',
+  characterId,
+  mode: m,
+  subtick: 0,
+});
 const move = (characterId: number, x: number, y: number): Intention => ({
   kind: 'move',
   characterId,
@@ -33,13 +40,18 @@ function walkingWorld(): WorldState {
 }
 
 describe('viewOf', () => {
-  it('copies only id, x and y', () => {
+  it('copies only id, x, y and speed', () => {
     const state = walkingWorld();
     const character = state.characters[0]!;
     expect(character.path.length).toBeGreaterThan(0);
     const view = viewOf(character);
-    expect(Object.keys(view).sort()).toEqual(['id', 'x', 'y']);
-    expect(view).toEqual({ id: character.id, x: character.tile.x, y: character.tile.y });
+    expect(Object.keys(view).sort()).toEqual(['id', 'speed', 'x', 'y']);
+    expect(view).toEqual({
+      id: character.id,
+      x: character.tile.x,
+      y: character.tile.y,
+      speed: character.speed,
+    });
   });
 });
 
@@ -55,12 +67,15 @@ describe('welcomeMessage', () => {
     expect(msg.characters.map((c) => c.id)).toEqual([2, 5]);
   });
 
-  it('never contains a path, even when a character has one', () => {
+  it('never contains a path, progress or stepped, even when a character has them', () => {
     const state = walkingWorld();
     expect(state.characters[0]!.path.length).toBeGreaterThan(0);
     const text = JSON.stringify(welcomeMessage(state, 1));
     expect(text).not.toContain('"path"');
+    expect(text).not.toContain('"progress"');
+    expect(text).not.toContain('"stepped"');
     expect(text).not.toContain('"tile"');
+    expect(text).toContain('"speed"');
   });
 });
 
@@ -77,7 +92,39 @@ describe('tickMessage', () => {
     expect(msg.left).toEqual([2]);
     expect(msg.moved.map((c) => c.id)).toEqual([1, 3]);
     const nextOne = next.characters.find((c) => c.id === 1)!;
-    expect(msg.moved[0]).toEqual({ id: 1, x: nextOne.tile.x, y: nextOne.tile.y });
+    expect(msg.moved[0]).toEqual({
+      id: 1,
+      x: nextOne.tile.x,
+      y: nextOne.tile.y,
+      speed: nextOne.speed,
+      via: [],
+    });
+  });
+
+  it('gives a horse that steps twice a via of the first tile it passed through', () => {
+    const base = step(createWorld(open(10, 4), { x: 0, y: 0 }), [join(1)]);
+    const prev = step(base, [mode(1, 'horse'), move(1, 8, 0)]);
+    const next = step(prev, []);
+    const character = next.characters[0]!;
+    expect(character.stepped.length).toBe(2);
+    const msg = tickMessage(prev, next);
+    expect(msg.moved).toHaveLength(1);
+    const entry = msg.moved[0]!;
+    expect(entry.via).toHaveLength(1);
+    expect(entry.via[0]).toEqual({ x: character.stepped[0]!.x, y: character.stepped[0]!.y });
+    expect(Object.keys(entry.via[0]!).sort()).toEqual(['x', 'y']);
+    expect({ x: entry.x, y: entry.y }).toEqual(character.tile);
+    expect(entry.speed).toBe(2000);
+  });
+
+  it('gives an empty via when a character steps once', () => {
+    const base = step(createWorld(open(10, 4), { x: 0, y: 0 }), [join(1)]);
+    const prev = step(base, [mode(1, 'run'), move(1, 8, 0)]);
+    const next = step(prev, []);
+    expect(next.characters[0]!.stepped.length).toBe(1);
+    const msg = tickMessage(prev, next);
+    expect(msg.moved).toHaveLength(1);
+    expect(msg.moved[0]!.via).toEqual([]);
   });
 
   it('returns empty arrays when nothing changed', () => {
@@ -90,7 +137,7 @@ describe('tickMessage', () => {
     expect(msg.left).toEqual([]);
   });
 
-  it('never contains a path', () => {
+  it('never contains a path, progress or stepped', () => {
     const prev = step(walkingWorld(), []); // a walker's rest tick; it steps on the next one
     const next = step(prev, []);
     expect(next.characters[0]!.path.length).toBeGreaterThan(0);
@@ -98,7 +145,15 @@ describe('tickMessage', () => {
     expect(msg.moved.length).toBe(1);
     const text = JSON.stringify(msg);
     expect(text).not.toContain('"path"');
+    expect(text).not.toContain('"progress"');
+    expect(text).not.toContain('"stepped"');
     expect(text).not.toContain('"tile"');
+  });
+});
+
+describe('queueMessage', () => {
+  it('carries the position in the queue', () => {
+    expect(queueMessage(3)).toEqual({ type: 'queue', position: 3 });
   });
 });
 
@@ -147,6 +202,26 @@ describe('parseClientMessage', () => {
     ['an x too large for a number', '{"type":"move","x":1e400,"y":0}'],
     ['an own __proto__ key', '{"type":"move","x":1,"y":2,"__proto__":{}}'],
   ])('rejects %s', (_name, raw) => {
+    expect(parseClientMessage(raw, grid)).toBeNull();
+  });
+
+  it.each(['walk', 'run', 'horse'])('accepts a debug mode message for %s', (m) => {
+    expect(parseClientMessage(`{"type":"mode","mode":"${m}"}`, grid)).toEqual({ type: 'mode', mode: m });
+  });
+
+  it('returns a fresh object for a mode message', () => {
+    const msg = parseClientMessage('{"mode":"run","type":"mode"}', grid);
+    expect(Object.keys(msg!)).toEqual(['type', 'mode']);
+  });
+
+  it.each([
+    ['an unknown mode', '{"type":"mode","mode":"fly"}'],
+    ['an inherited key as the mode', '{"type":"mode","mode":"toString"}'],
+    ['a non-string mode', '{"type":"mode","mode":1}'],
+    ['an extra key', '{"type":"mode","mode":"run","x":1}'],
+    ['a missing mode', '{"type":"mode"}'],
+    ['a mode on a move', '{"type":"move","x":1,"y":1,"mode":"run"}'],
+  ])('rejects a mode message with %s', (_name, raw) => {
     expect(parseClientMessage(raw, grid)).toBeNull();
   });
 
