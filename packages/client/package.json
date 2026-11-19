@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@epochs/shared": "*"
+    "@epochs/shared": "*",
+    "pixi.js": "^8.23.0"
   }
 }
