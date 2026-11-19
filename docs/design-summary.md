@@ -32,7 +32,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - The 1, 2 and 3 keys that switch between walk, run and horse are **debug controls**, for testing feel only. Running and riding get real rules later. *(Peter, 2026-11-19.)*
 - No free steps: a standing character's progress toward a step is capped at one full step. After a rest they step on the next tick, but repeated clicks never beat their normal pace. *(Peter, 2026-11-19.)*
 - A new click replaces the path on the next tick. Hovering shows the planned path.
-- Movement is in 8 directions. A diagonal step takes one tick, like any other step. *(Peter, 2026-11-19.)*
+- Movement is in 8 directions. A diagonal step takes the same time as any other step. *(Peter, 2026-11-19.)*
 - A diagonal step is only allowed when both tiles you'd pass between are walkable, as in Old School RuneScape. No cutting corners. *(Peter, 2026-11-19.)*
 - Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. A diagonal tile counts as 1 step away. If two are equally near, the one with the shorter path wins, then the lower y, then the lower x. The hover preview shows the same path. *(Peter, 2026-11-19; the last two tie-breaks are approved builder's calls.)*
 - The nearest-tile search covers 16 tiles around the click, about one screen. If nothing reachable is in range, the character stays put. *(Peter, 2026-11-19.)*
