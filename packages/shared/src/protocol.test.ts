@@ -143,6 +143,8 @@ describe('parseClientMessage', () => {
     ['an extra key', '{"type":"move","x":1,"y":1,"path":[]}'],
     ['an unknown type', '{"type":"attack","x":1,"y":1}'],
     ['a missing type', '{"x":1,"y":1,"z":2}'],
+    ['an x too large for a number', '{"type":"move","x":1e400,"y":0}'],
+    ['an own __proto__ key', '{"type":"move","x":1,"y":2,"__proto__":{}}'],
   ])('rejects %s', (_name, raw) => {
     expect(parseClientMessage(raw, grid)).toBeNull();
   });

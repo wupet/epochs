@@ -8,7 +8,6 @@ import type { Grid, Tile } from '@epochs/shared';
 import type { ClientWorld } from './client-world';
 import { pulseEnabledFromSearch, pulseLevel } from './pulse';
 
-const GRID_TILES = 32;
 const MIN_TILE_SIZE = 12;
 const SQUARE_INSET = 0.15;
 
@@ -41,12 +40,15 @@ interface Layout {
   readonly offsetY: number;
 }
 
-function computeLayout(): Layout {
-  const tileSize = Math.max(MIN_TILE_SIZE, Math.floor(Math.min(window.innerWidth, window.innerHeight) / GRID_TILES));
+function computeLayout(grid: Grid): Layout {
+  const tileSize = Math.max(
+    MIN_TILE_SIZE,
+    Math.floor(Math.min(window.innerWidth / grid.width, window.innerHeight / grid.height)),
+  );
   return {
     tileSize,
-    offsetX: Math.floor((window.innerWidth - GRID_TILES * tileSize) / 2),
-    offsetY: Math.floor((window.innerHeight - GRID_TILES * tileSize) / 2),
+    offsetX: Math.floor((window.innerWidth - grid.width * tileSize) / 2),
+    offsetY: Math.floor((window.innerHeight - grid.height * tileSize) / 2),
   };
 }
 
@@ -108,7 +110,7 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
 
   function tileAt(clientX: number, clientY: number, grid: Grid): Tile | null {
     const rect = app.canvas.getBoundingClientRect();
-    const { tileSize, offsetX, offsetY } = computeLayout();
+    const { tileSize, offsetX, offsetY } = computeLayout(grid);
     const tile = {
       x: Math.floor((clientX - rect.left - offsetX) / tileSize),
       y: Math.floor((clientY - rect.top - offsetY) / tileSize),
@@ -141,16 +143,20 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
   function frame(): void {
     const grid = world.grid;
     const now = performance.now();
-    const layout = computeLayout();
-
-    if (grid !== null && (grid !== drawnGrid || drawnLayout === null || !sameLayout(layout, drawnLayout))) {
-      drawGrid(grid, layout);
-      drawnGrid = grid;
-      drawnLayout = layout;
-    }
 
     dynamicLayer.clear();
-    if (grid !== null) {
+    // Before the welcome there is no grid: draw nothing.
+    if (grid === null) {
+      gridLayer.clear();
+      drawnGrid = null;
+      drawnLayout = null;
+    } else {
+      const layout = computeLayout(grid);
+      if (grid !== drawnGrid || drawnLayout === null || !sameLayout(layout, drawnLayout)) {
+        drawGrid(grid, layout);
+        drawnGrid = grid;
+        drawnLayout = layout;
+      }
       const { tileSize, offsetX, offsetY } = layout;
       const you = world.you;
       const mine = you === null ? undefined : world.tileOf(you);

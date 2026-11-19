@@ -45,7 +45,10 @@ interface Connection {
 export function createWorldServer(options: WorldServerOptions = {}): WorldServer {
   const grid = gridFromRows(options.rows ?? TEST_MAP_ROWS);
   let state: WorldState = createWorld(grid, options.spawn ?? TEST_MAP_SPAWN);
-  let queued: Intention[] = [];
+  // Joins and leaves are queued in arrival order. Moves are not: only each character's latest move this
+  // tick is kept, so a flood of moves cannot grow the queue.
+  let queuedLifecycle: Intention[] = [];
+  let latestMoves = new Map<CharacterId, Tile>();
   let nextId: CharacterId = 1;
   const connections = new Map<CharacterId, Connection>();
   let loop: TickLoop | undefined;
@@ -70,33 +73,50 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
     const characterId = nextId++;
     const connection: Connection = { characterId, socket, welcomed: false };
     connections.set(characterId, connection);
-    queued.push({ kind: 'join', characterId, subtick: 0 });
+    queuedLifecycle.push({ kind: 'join', characterId, subtick: 0 });
 
     socket.on('message', (data, isBinary) => {
       if (isBinary) return;
       const message = parseClientMessage(data.toString(), grid);
       if (message === null) return;
-      queued.push({ kind: 'move', characterId, target: { x: message.x, y: message.y }, subtick: 0 });
+      latestMoves.set(characterId, { x: message.x, y: message.y });
     });
     // A socket error is always followed by a close, which is where we clean up.
     socket.on('error', () => {});
     socket.on('close', () => {
       connections.delete(characterId);
-      queued.push({ kind: 'leave', characterId, subtick: 0 });
+      queuedLifecycle.push({ kind: 'leave', characterId, subtick: 0 });
     });
   });
 
   const send = (socket: WebSocket, payload: string): void => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(payload);
+    if (socket.readyState !== WebSocket.OPEN) return;
+    // One failing socket must not stop the others getting this tick.
+    try {
+      socket.send(payload);
+    } catch (error) {
+      console.error('Send failed:', error);
+    }
+  };
+
+  /** Queued joins and leaves in arrival order, then one move per character in ascending id order. */
+  const takeIntentions = (): Intention[] => {
+    const moves: Intention[] = [...latestMoves.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([characterId, target]) => ({ kind: 'move', characterId, target, subtick: 0 }));
+    return [...queuedLifecycle, ...moves];
   };
 
   const onTick = (): void => {
     // The loop ends silently if this throws, so one bad tick must not escape.
     try {
       const prev = state;
-      const intentions = queued;
-      queued = [];
-      state = step(prev, intentions);
+      const intentions = takeIntentions();
+      // Only forget the intentions once `step` has accepted them, so a failed tick is retried next tick.
+      const next = step(prev, intentions);
+      queuedLifecycle = [];
+      latestMoves = new Map();
+      state = next;
 
       const tick = JSON.stringify(tickMessage(prev, state));
       for (const connection of connections.values()) {

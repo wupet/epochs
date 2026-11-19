@@ -33,15 +33,16 @@ interface TestClient {
 }
 
 describe('world server', () => {
-  let server: WorldServer;
+  let server: WorldServer | undefined;
   let clock: ManualClock;
   let port: number;
   const clients: TestClient[] = [];
 
   async function start(): Promise<void> {
     clock = new ManualClock();
-    server = createWorldServer({ clock });
-    port = await server.listen(0);
+    const created = createWorldServer({ clock });
+    server = created;
+    port = await created.listen(0);
   }
 
   async function connect(): Promise<TestClient> {
@@ -100,7 +101,8 @@ describe('world server', () => {
     vi.restoreAllMocks();
     for (const { ws } of clients) ws.terminate();
     clients.length = 0;
-    await server.close();
+    await server?.close();
+    server = undefined;
   });
 
   it('answers a health check with the shared tick length', async () => {
@@ -207,6 +209,22 @@ describe('world server', () => {
     await a.flush();
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y }]);
+  });
+
+  it('applies only the latest of many moves sent within one tick', async () => {
+    await start();
+    const { client: a, welcome } = await connectAndWelcome();
+    const { x, y } = welcome.characters[0]!;
+
+    for (let i = 0; i < 999; i++) move(a, x - 5, y - 5);
+    move(a, x + 3, y);
+    await a.flush();
+
+    clock.advance(TICK_MS);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y }]);
+    expect(a.ws.readyState).toBe(WebSocket.OPEN);
+    clock.advance(TICK_MS);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y }]);
   });
 
   it('ignores bad messages, keeps the socket open, and still accepts a valid move', async () => {

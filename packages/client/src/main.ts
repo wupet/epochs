@@ -46,4 +46,14 @@ async function main(): Promise<void> {
   setInterval(() => console.log('[epochs] tick timing', timing.summary(), `(expected ${TICK_MS} ms)`), TIMING_LOG_MS);
 }
 
-void main();
+main().catch((error: unknown) => {
+  console.error(error);
+  const message = error instanceof Error ? error.message : String(error);
+  let status = document.getElementById('status');
+  if (status === null) {
+    status = document.createElement('div');
+    status.id = 'status';
+    document.body.appendChild(status);
+  }
+  status.textContent = `Could not start the renderer: ${message}`;
+});

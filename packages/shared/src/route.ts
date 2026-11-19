@@ -90,7 +90,9 @@ export function findRoute(grid: Grid, from: Tile, to: Tile): Route {
   let current = from;
   while (!sameTile(current, destination)) {
     const remaining = toDestination[current.y * grid.width + current.x]!;
-    if (remaining === -1) break; // `from` cannot be walked from: nowhere to go
+    // Defensive and unreachable for an in-bounds start: the reverse search reaches every tile the forward
+    // search did, and the destination is one of those. (A blocked `from` can still get a reverse distance.)
+    if (remaining === -1) break;
     const preferred = {
       x: Math.sign(destination.x - current.x),
       y: Math.sign(destination.y - current.y),
@@ -104,7 +106,7 @@ export function findRoute(grid: Grid, from: Tile, to: Tile): Route {
         break;
       }
     }
-    if (chosen === undefined) break; // cannot happen on a consistent grid
+    if (chosen === undefined) break; // defensive: some neighbour is always one step closer
     path.push(chosen);
     current = chosen;
   }

@@ -11,12 +11,18 @@ export interface TickTimingSummary {
   readonly minMs: number;
 }
 
+/** Only the most recent intervals are kept: 2400 ticks is about ten minutes. */
+const MAX_INTERVALS = 2400;
+
 export class TickTiming {
   private lastArrivalMs: number | null = null;
   private readonly intervals: number[] = [];
 
   record(arrivalMs: number): void {
-    if (this.lastArrivalMs !== null) this.intervals.push(arrivalMs - this.lastArrivalMs);
+    if (this.lastArrivalMs !== null) {
+      this.intervals.push(arrivalMs - this.lastArrivalMs);
+      if (this.intervals.length > MAX_INTERVALS) this.intervals.shift();
+    }
     this.lastArrivalMs = arrivalMs;
   }
 

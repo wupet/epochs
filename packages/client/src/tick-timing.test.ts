@@ -33,4 +33,20 @@ describe('TickTiming', () => {
     expect(t.summary().p95Ms).toBe(19);
     expect(t.summary().maxMs).toBe(20);
   });
+
+  it('keeps only the most recent 2400 intervals', () => {
+    const t = new TickTiming();
+    // 3000 arrivals: the first 600 intervals are 100 ms, the remaining 2400 are 250 ms.
+    let at = 0;
+    t.record(at);
+    for (let i = 0; i < 2999; i++) {
+      at += i < 599 ? 100 : 250;
+      t.record(at);
+    }
+    const s = t.summary();
+    expect(s.count).toBe(2400);
+    expect(s.minMs).toBe(250);
+    expect(s.maxMs).toBe(250);
+    expect(s.meanMs).toBe(250);
+  });
 });

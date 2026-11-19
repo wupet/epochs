@@ -26,8 +26,8 @@ function script(): Intention[][] {
     { kind: 'move', characterId: 1, target: { x: 10, y: 10 }, subtick: 0 },
   ];
   ticks[1] = [
-    { kind: 'move', characterId: 2, target: { x: 3, y: 3 }, subtick: 0 }, // walled-in room
-    { kind: 'move', characterId: 2, target: { x: 6, y: 1 }, subtick: 0 }, // blocked tile; the last one counts
+    { kind: 'move', characterId: 2, target: { x: 3, y: 3 }, subtick: 0 }, // a room that is open at the bottom; replaced by the next move
+    { kind: 'move', characterId: 2, target: { x: 6, y: 1 }, subtick: 0 }, // blocked tile; the last move this tick wins
   ];
   ticks[3] = [{ kind: 'join', characterId: 3, subtick: 0 }];
   ticks[4] = [

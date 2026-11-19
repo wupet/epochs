@@ -38,6 +38,19 @@ describe('findForbidden', () => {
   it('does not flag lookalike names', () => {
     expect(findForbidden('const MathRandom = 1; myDate.nowish();')).toEqual([]);
   });
+
+  it('flags Date called without new', () => {
+    expect(findForbidden('const s = Date();')).toHaveLength(1);
+    expect(findForbidden('const s = Date ();')).toHaveLength(1);
+  });
+
+  it('reports new Date() exactly once', () => {
+    expect(findForbidden('const d = new Date();')).toHaveLength(1);
+  });
+
+  it('does not flag names or members that merely end in Date', () => {
+    expect(findForbidden('const a = toDate(); const b = myDate(); const c = x.Date(1);')).toEqual([]);
+  });
 });
 
 describe('stripComments', () => {
@@ -55,7 +68,7 @@ describe('stripComments', () => {
 });
 
 describe('FORBIDDEN_PATTERNS', () => {
-  it('lists the three banned constructs', () => {
-    expect(FORBIDDEN_PATTERNS).toHaveLength(3);
+  it('lists the four banned constructs', () => {
+    expect(FORBIDDEN_PATTERNS).toHaveLength(4);
   });
 });

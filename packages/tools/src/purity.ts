@@ -10,6 +10,8 @@ export const FORBIDDEN_PATTERNS: readonly RegExp[] = [
   /\bMath\s*\.\s*random\b/,
   /\bDate\s*\.\s*now\b/,
   /\bnew\s+Date\b/,
+  // `Date()` without `new` returns the current time as a string. `new Date(` is the pattern above.
+  /(?<![.\w])(?<!\bnew\s+)Date\s*\(/,
 ];
 
 export interface ForbiddenHit {
