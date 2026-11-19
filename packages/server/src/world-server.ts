@@ -62,6 +62,10 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
 
   const wss = new WebSocketServer({ server: httpServer, path: '/world', maxPayload: MAX_PAYLOAD_BYTES });
 
+  // ws re-emits the HTTP server's errors on itself. Without a listener, a bind error (such as the port
+  // being in use) would throw out of that emit instead of reaching the rejection in `listen`.
+  wss.on('error', () => {});
+
   wss.on('connection', (socket) => {
     const characterId = nextId++;
     const connection: Connection = { characterId, socket, welcomed: false };

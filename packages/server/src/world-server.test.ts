@@ -112,6 +112,17 @@ describe('world server', () => {
     expect(await response.text()).toBe('{"ok":true,"tickMs":250}');
   });
 
+  it('rejects listen when the port is already in use, instead of crashing', async () => {
+    await start();
+    const second = createWorldServer({ clock: new ManualClock() });
+
+    try {
+      await expect(second.listen(port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    } finally {
+      await second.close();
+    }
+  });
+
   it('answers anything else over HTTP with 404', async () => {
     await start();
 
