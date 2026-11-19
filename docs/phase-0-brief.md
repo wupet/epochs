@@ -23,6 +23,8 @@ There are three milestones. Do them in order. Finish each one, with tests passin
 
 ## Milestone 0.2: A ticking grid
 
+*Movement pace superseded by 0.2.1: walking is one tile every 2 ticks; see the 0.2.1 section below.*
+
 **Build, in `shared`:**
 
 - A grid type: width, height, and which tiles are blocked.
