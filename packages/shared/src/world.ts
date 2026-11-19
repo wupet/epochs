@@ -6,6 +6,14 @@
 import { STEP_DIRECTIONS, canStep, inBounds, isWalkable, sameTile } from './grid';
 import type { Grid, Tile } from './grid';
 import { findRoute } from './route';
+import {
+  DEBUG_MOVEMENT_MODES,
+  DEFAULT_SPEED,
+  MAX_STEPS_PER_TICK,
+  STEP,
+  isDebugMovementMode,
+} from './movement';
+import type { DebugMovementMode } from './movement';
 
 /** A character's id: a positive integer from the server's counter, never reused. */
 export type CharacterId = number;
@@ -15,6 +23,12 @@ export interface Character {
   readonly tile: Tile;
   /** The tiles still to walk through, in order. Empty when standing still. Never sent to clients. */
   readonly path: readonly Tile[];
+  /** Millitiles of progress gained per tick. At most `MAX_SPEED`. */
+  readonly speed: number;
+  /** Millitiles built up toward the next step. A step costs `STEP`. Never sent to clients. */
+  readonly progress: number;
+  /** The tiles entered this tick, in order. Empty if the character did not move. */
+  readonly stepped: readonly Tile[];
 }
 
 export interface WorldState {
@@ -29,9 +43,12 @@ export interface WorldState {
 /**
  * What a client (or the server on its behalf) asks for. `subtick` orders intentions within a tick;
  * it is 0 in Phase 0. A move is a wish to walk to `target`, not a result.
+ * A `mode` sets the movement speed to one of the debug modes.
  */
 export type Intention =
   | { readonly kind: 'move'; readonly characterId: CharacterId; readonly target: Tile; readonly subtick: number }
+  // Debug: running and riding get real rules later.
+  | { readonly kind: 'mode'; readonly characterId: CharacterId; readonly mode: DebugMovementMode; readonly subtick: number }
   | { readonly kind: 'join'; readonly characterId: CharacterId; readonly subtick: number }
   | { readonly kind: 'leave'; readonly characterId: CharacterId; readonly subtick: number };
 
@@ -74,9 +91,13 @@ export function findSpawnTile(state: WorldState): Tile {
  *
  * 1. Sort the intentions by (subtick, characterId); ties keep their input order.
  * 2. Apply joins and leaves in that order.
- * 3. Give each character the last move addressed to it, as a route to its target.
- * 4. Move every character one step along its path.
- * 5. Add one to the tick.
+ * 3. Give each character the last debug mode addressed to it as its speed (progress is kept).
+ * 4. Give each character the last move addressed to it, as a route to its target.
+ * 5. Move every character along its path: while it has a path, at least `STEP` of progress, and
+ *    has taken fewer than `MAX_STEPS_PER_TICK` steps this tick, take the next step if it is still
+ *    legal (else clear the path), paying `STEP`. Then add the speed to the progress; a character
+ *    with no path left keeps at most one step of progress, so resting never banks free steps.
+ * 6. Add one to the tick.
  */
 export function step(state: WorldState, intentions: readonly Intention[]): WorldState {
   const sorted = [...intentions].sort(
@@ -89,14 +110,33 @@ export function step(state: WorldState, intentions: readonly Intention[]): World
     if (intention.kind === 'join') {
       if (characters.some((c) => c.id === intention.characterId)) continue;
       const tile = findSpawnTile({ ...state, characters });
-      characters.push({ id: intention.characterId, tile, path: [] });
+      characters.push({
+        id: intention.characterId,
+        tile,
+        path: [],
+        speed: DEFAULT_SPEED,
+        progress: STEP,
+        stepped: [],
+      });
       characters.sort((a, b) => a.id - b.id);
     } else if (intention.kind === 'leave') {
       characters = characters.filter((c) => c.id !== intention.characterId);
     }
   }
 
-  // 3. The last move for each character wins.
+  // 3. The last debug mode for each character wins. It changes the speed, not the progress.
+  const lastMode = new Map<CharacterId, DebugMovementMode>();
+  for (const intention of sorted) {
+    if (intention.kind === 'mode' && isDebugMovementMode(intention.mode)) {
+      lastMode.set(intention.characterId, intention.mode);
+    }
+  }
+  characters = characters.map((c) => {
+    const mode = lastMode.get(c.id);
+    return mode === undefined ? c : { ...c, speed: DEBUG_MOVEMENT_MODES[mode] };
+  });
+
+  // 4. The last move for each character wins.
   const lastMove = new Map<CharacterId, Tile>();
   for (const intention of sorted) {
     if (intention.kind === 'move') lastMove.set(intention.characterId, intention.target);
@@ -106,13 +146,24 @@ export function step(state: WorldState, intentions: readonly Intention[]): World
     return target === undefined ? c : { ...c, path: findRoute(state.grid, c.tile, target).path };
   });
 
-  // 4. Everyone takes one step, if the next tile is still allowed.
+  // 5. Movement: spend progress on steps, then earn this tick's progress.
   characters = characters.map((c) => {
-    const next = c.path[0];
-    if (next !== undefined && canStep(state.grid, c.tile, next)) {
-      return { id: c.id, tile: next, path: c.path.slice(1) };
+    let { tile, path, progress } = c;
+    const stepped: Tile[] = [];
+    while (path.length > 0 && progress >= STEP && stepped.length < MAX_STEPS_PER_TICK) {
+      const next = path[0]!;
+      if (!canStep(state.grid, tile, next)) {
+        path = [];
+        break;
+      }
+      tile = next;
+      path = path.slice(1);
+      stepped.push(tile);
+      progress -= STEP;
     }
-    return { id: c.id, tile: c.tile, path: [] };
+    progress += c.speed;
+    if (path.length === 0) progress = Math.min(progress, STEP);
+    return { id: c.id, tile, path, speed: c.speed, progress, stepped };
   });
 
   return { tick: state.tick + 1, grid: state.grid, spawn: state.spawn, characters };

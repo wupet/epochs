@@ -67,7 +67,8 @@ describe('welcomeMessage', () => {
 describe('tickMessage', () => {
   it('reports joins, leaves and moves across one step, sorted by id', () => {
     const base = step(createWorld(open(8, 8), { x: 0, y: 0 }), [join(1), join(2), join(3)]);
-    const moving = step(base, [move(3, 5, 5), move(1, 5, 0)]);
+    // Walkers step every second tick, so let one rest tick pass: the next tick has them step again.
+    const moving = step(step(base, [move(3, 5, 5), move(1, 5, 0)]), []);
     const next = step(moving, [leave(2), join(9), join(4)]);
     const msg = tickMessage(moving, next);
     expect(msg.type).toBe('tick');
@@ -90,7 +91,7 @@ describe('tickMessage', () => {
   });
 
   it('never contains a path', () => {
-    const prev = walkingWorld();
+    const prev = step(walkingWorld(), []); // a walker's rest tick; it steps on the next one
     const next = step(prev, []);
     expect(next.characters[0]!.path.length).toBeGreaterThan(0);
     const msg = tickMessage(prev, next);

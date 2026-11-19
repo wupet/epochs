@@ -172,7 +172,7 @@ describe('world server', () => {
     expect(welcomeForB.characters.map((c) => c.id)).toEqual([1, 2]);
   });
 
-  it('walks a character one tile per tick to its target', async () => {
+  it('walks a character one tile every 2 ticks (the first on the next tick) to its target', async () => {
     await start();
     const { client: a, welcome } = await connectAndWelcome();
     const origin = welcome.characters[0]!;
@@ -180,18 +180,20 @@ describe('world server', () => {
     move(a, origin.x + 3, origin.y);
     await a.flush();
 
-    const steps: CharacterView[] = [];
-    for (let i = 0; i < 3; i++) {
+    // Walking is a tile every 2 ticks: it moves on ticks 1, 3 and 5 and stands still on 2, 4 and 6.
+    const perTick: CharacterView[][] = [];
+    for (let i = 0; i < 6; i++) {
       clock.advance(TICK_MS);
-      const tick = await a.nextMessage('tick');
-      expect(tick.moved).toHaveLength(1);
-      steps.push(tick.moved[0]!);
+      perTick.push([...(await a.nextMessage('tick')).moved]);
     }
 
-    expect(steps).toEqual([
-      { id: 1, x: origin.x + 1, y: origin.y },
-      { id: 1, x: origin.x + 2, y: origin.y },
-      { id: 1, x: origin.x + 3, y: origin.y },
+    expect(perTick).toEqual([
+      [{ id: 1, x: origin.x + 1, y: origin.y }],
+      [],
+      [{ id: 1, x: origin.x + 2, y: origin.y }],
+      [],
+      [{ id: 1, x: origin.x + 3, y: origin.y }],
+      [],
     ]);
   });
 
@@ -207,6 +209,9 @@ describe('world server', () => {
 
     move(a, x, y + 6);
     await a.flush();
+    // The re-route lands on a rest tick: no step now, and the next step already heads the new way.
+    clock.advance(TICK_MS);
+    expect((await a.nextMessage('tick')).moved).toEqual([]);
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y }]);
   });
@@ -223,6 +228,8 @@ describe('world server', () => {
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y }]);
     expect(a.ws.readyState).toBe(WebSocket.OPEN);
+    clock.advance(TICK_MS);
+    expect((await a.nextMessage('tick')).moved).toEqual([]); // a rest tick: walking is a tile every 2 ticks
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y }]);
   });
@@ -256,7 +263,7 @@ describe('world server', () => {
 
     move(a.client, x, y + 10);
     await a.client.flush();
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 12; i++) {
       clock.advance(TICK_MS);
       await b.client.nextMessage('tick');
     }
@@ -264,8 +271,8 @@ describe('world server', () => {
     const welcomeKeys = ['characters', 'grid', 'tick', 'type', 'you'];
     const tickKeys = ['joined', 'left', 'moved', 'tick', 'type'];
     const characterKeys = ['id', 'x', 'y'];
-    // B's welcome plus six ticks.
-    expect(b.client.messages).toHaveLength(7);
+    // B's welcome plus twelve ticks (six tiles of walking).
+    expect(b.client.messages).toHaveLength(13);
     for (const message of b.client.messages) {
       expect(Object.keys(message).sort()).toEqual(message.type === 'welcome' ? welcomeKeys : tickKeys);
       const characters =
