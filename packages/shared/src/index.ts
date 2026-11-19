@@ -3,3 +3,4 @@ export * from './region';
 export * from './grid';
 export * from './route';
 export * from './world';
+export * from './protocol';
