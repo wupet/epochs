@@ -9,6 +9,11 @@
     "node": ">=22"
   },
   "scripts": {
+    "check-links": "node --import tsx packages/tools/src/check-links.ts",
+    "predev": "node --import tsx packages/tools/src/check-links.ts",
+    "pretest": "node --import tsx packages/tools/src/check-links.ts",
+    "pretest:watch": "node --import tsx packages/tools/src/check-links.ts",
+    "pretypecheck": "node --import tsx packages/tools/src/check-links.ts",
     "dev": "concurrently --kill-others --names server,client --prefix-colors blue,magenta \"npm run dev -w @epochs/server\" \"npm run dev -w @epochs/client\"",
     "test": "vitest run",
     "test:watch": "vitest",
