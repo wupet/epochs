@@ -53,6 +53,7 @@ A starting point, to be confirmed with small tests.
 - Clients send intentions: move to this tile, use this ability on that target.
 - The server sends changes once per tick, limited to what each player can see.
 - Hidden things, such as ghosts, secret doors, and what's behind walls, are never sent to a client that shouldn't see them.
+- **Zoom never changes how far you can see.** Zoom is a client display setting, adjustable by the player within fixed limits (12–64 px per tile). The server decides what each client receives from the character's position and the rules, never from the client's zoom or window size. *(Peter, 2026-11-19.)*
 - The client slides characters between ticks so the steps never show.
 - Reconnecting restores the player's view from the server's state.
 

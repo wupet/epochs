@@ -6,11 +6,15 @@ import type { Point } from './motion';
 /** The tile sizes (px) the zoom keys step through. */
 export const ZOOM_TILE_SIZES = [12, 16, 20, 24, 32, 40, 48, 64] as const;
 
-const MIN_TILE_SIZE = ZOOM_TILE_SIZES[0];
+/** The smallest tile size (px). Player-adjustable zoom stays within these limits; zoom is display-only. */
+export const MIN_TILE_SIZE = ZOOM_TILE_SIZES[0];
 
-/** The largest whole tile size that shows the whole map in the view, but never below 12. */
+/** The largest tile size (px). Player-adjustable zoom stays within these limits; zoom is display-only. */
+export const MAX_TILE_SIZE = ZOOM_TILE_SIZES[ZOOM_TILE_SIZES.length - 1]!;
+
+/** The largest whole tile size that shows the whole map in the view, kept within the zoom limits (12 to 64). */
 export function fitTileSize(viewW: number, viewH: number, gridW: number, gridH: number): number {
-  return Math.max(MIN_TILE_SIZE, Math.floor(Math.min(viewW / gridW, viewH / gridH)));
+  return Math.min(MAX_TILE_SIZE, Math.max(MIN_TILE_SIZE, Math.floor(Math.min(viewW / gridW, viewH / gridH))));
 }
 
 /** The next larger zoom size, or `current` if there is none. */

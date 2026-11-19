@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZOOM_TILE_SIZES, computeLayout, fitTileSize, tileAtScreen, zoomIn, zoomOut } from './layout';
+import { MAX_TILE_SIZE, MIN_TILE_SIZE, ZOOM_TILE_SIZES, computeLayout, fitTileSize, tileAtScreen, zoomIn, zoomOut } from './layout';
 
 describe('fitTileSize', () => {
   it('fits the whole map in the view', () => {
@@ -8,6 +8,18 @@ describe('fitTileSize', () => {
 
   it('never goes below 12', () => {
     expect(fitTileSize(100, 100, 32, 32)).toBe(12);
+  });
+
+  it('never goes above 64: a huge view fits at the largest zoom, a tiny one at the smallest', () => {
+    expect(fitTileSize(3840, 2160, 32, 32)).toBe(64); // 3840/32 = 120, 2160/32 = 67, both over the limit
+    expect(fitTileSize(50, 50, 32, 32)).toBe(12);
+  });
+
+  it('exports the zoom limits as the first and last zoom sizes', () => {
+    expect(MIN_TILE_SIZE).toBe(12);
+    expect(MAX_TILE_SIZE).toBe(64);
+    expect(MIN_TILE_SIZE).toBe(ZOOM_TILE_SIZES[0]);
+    expect(MAX_TILE_SIZE).toBe(ZOOM_TILE_SIZES[ZOOM_TILE_SIZES.length - 1]);
   });
 });
 
