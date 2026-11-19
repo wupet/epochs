@@ -26,7 +26,12 @@ There are three milestones. Do them in order. Finish each one, with tests passin
 **Build, in `shared`:**
 
 - A grid type: width, height, and which tiles are blocked.
-- Pathfinding (A* is fine) from one tile to another on the grid, moving in four directions. Diagonal movement is undecided; keep it easy to switch on later, and ask Peter if it matters.
+- Pathfinding from one tile to another on the grid. Peter's decisions (2026-11-19):
+  - It moves in 8 directions, and a diagonal step takes one tick like any other step.
+  - Old School RuneScape's rule applies: a diagonal step is only allowed when both L-shaped routes are clear, so both tiles you'd pass between must be walkable. No cutting corners.
+  - Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. If two are equally near, prefer the one with the shorter path. The hover preview shows the same path.
+  - Players pass through each other and can share tiles. Enemy collision is decided in Phase 2.
+  - Builder's interpretation, to confirm with Peter: "nearest" is measured as straight-line distance (dx² + dy²), and any remaining tie goes to the lower y, then the lower x.
 - A pure `step` function: given the world state and the intentions received this tick, return the next world state. No randomness, no clock, no I/O.
 
 **Build, in `server`:**
@@ -52,8 +57,10 @@ There are three milestones. Do them in order. Finish each one, with tests passin
 **Tests:**
 
 - Pathfinding: finds a path, avoids blocked tiles, reports when there's no path.
+- Diagonal corner rule: a diagonal step is refused when either tile you'd pass between is blocked.
 - Determinism: running the same starting state and the same sequence of intentions through `step` twice produces identical results.
 - Tick timing: the loop runs the right number of steps over a simulated stretch of time, with no drift.
+- Purity guard: the tests fail if any file in `packages/shared` uses `Math.random`, `Date.now`, or `new Date`.
 
 **Done when:**
 

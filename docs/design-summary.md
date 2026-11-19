@@ -29,6 +29,11 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 
 - Click-to-move on a tile grid. The server finds the path; characters move one tile per tick at base speed.
 - A new click replaces the path on the next tick. Hovering shows the planned path.
+- Movement is in 8 directions. A diagonal step takes one tick, like any other step. *(Peter, 2026-11-19.)*
+- A diagonal step is only allowed when both tiles you'd pass between are walkable, as in Old School RuneScape. No cutting corners. *(Peter, 2026-11-19.)*
+- Clicking a blocked or unreachable tile walks you to the nearest reachable tile, like RuneScape. If two are equally near, the one with the shorter path wins. The hover preview shows the same path. *(Peter, 2026-11-19.)*
+- Players pass through each other and can share tiles. Enemy collision is decided in Phase 2. *(Peter, 2026-11-19.)*
+- *Builder's interpretation, to confirm with Peter:* "nearest" is straight-line distance (dx² + dy²), and any remaining tie goes to the lower y, then the lower x.
 - Attack-move, like League of Legends, comes later.
 - Movement speed is a stat: faster characters act on earlier subticks.
 
