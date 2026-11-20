@@ -262,7 +262,7 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
   - Hedge Witch: Wits +3, Vigor +1, witch's staff.
   - Every preset wears the leather jerkin. The debug panel can swap weapons.
   - The point from each level goes into the preset's main attribute; the panel's +/− buttons move them.
-- **Death.** You respawn at the campfire at full health, with no penalty. The wave carries on. Enemies whose most recent damager was you forget you and go back to the nearest player. The recap stays on screen until you close it.
+- **Death.** You respawn at the campfire on the next tick, at full health, with no penalty. The wave carries on. Enemies whose most recent damager was you forget you and go back to the nearest player. The recap stays on screen until you close it.
 - **Healing.** No health regeneration and no campfire healing in 2.1; the debug panel has a full-heal button. Campfire healing waits for the design.
 - **Attack-move.** Press **A**, then click a tile: you walk toward it. Whenever an enemy is within weapon range and line of sight, you attack the one nearest you (ties go to the lowest id) until it dies or leaves range, then carry on walking. Clicking an enemy chases and attacks it until it dies.
 - **What players see.** Enemy health bars, and floating damage numbers for hits you deal and take. Working out resistances by watching the numbers is knowledge players should earn; Study the Prey stays the instant, reliable version, plus its damage bonus.

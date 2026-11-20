@@ -40,10 +40,10 @@
 ## Review Focus
 
 1. **A chase target that dies or is cleared mid-chase.** This covers an enemy killed by another player, and an enemy removed by a wave start. The attacker's order ends cleanly: no hit lands on a removed enemy and nothing throws. Pinned in Task 4.
-2. **Hostile ids in debug messages,** such as `debug-start-wave` with `"constructor"`, or `debug-weapon` given the jerkin's id. The tick goes on and the intention does nothing. Pinned in Tasks 3 and 5.
+2. **Hostile ids in debug messages,** such as `debug-start-wave` with `"constructor"`, or `debug-weapon` given the jerkin's id. The tick goes on and the intention does nothing. Pinned in Tasks 3 and 6.
 3. **Starting a wave while players stand on its spawn tiles.** Each enemy appears on the nearest free tile and never shares a tile with anyone. Pinned in Task 3.
-4. **Dying while a slime's windup is aimed at you.** You respawn at once, and the windup still resolves on the old tile without hitting the respawned you. Pinned in Task 4.
-5. **Crowding.** Over a long scripted fight with several slimes and players, an enemy never shares a tile with another enemy or a player. Pinned by an invariant test in Task 4.
+4. **Dying while a slime's windup is aimed at you.** You are down for one tick, can't be hit, then respawn at the campfire. The windup resolves on the old tile without hitting anyone. Pinned in Task 5.
+5. **Crowding.** Over a long scripted fight with several slimes and players, an enemy never shares a tile with another enemy or a player. Pinned by an invariant test in Task 5.
 
 ---
 
@@ -294,38 +294,66 @@
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message `World model for combat: sheets, enemies, debug intentions, waves, enemies block movement`.
 
-### Task 4: Orders, the placeholder AI, combat, death and respawn
+### Task 4: Attack orders, basic attacks, death, the dummy
 
 **Files:**
-- Create:
-  - `packages/shared/src/enemy-ai.ts`;
-  - `packages/shared/src/combat.ts`;
-  - `enemy-ai.test.ts`;
-  - `combat.test.ts`.
-- Modify `world.ts` and `determinism.test.ts`.
+- Create `packages/shared/src/combat.ts` and `combat.test.ts`.
+- Modify `world.ts`.
 
 **Interfaces:**
 - **Consumes:** Tasks 2 and 3.
-- **Produces in `enemy-ai.ts`:**
-  - `type EnemyOrder = { kind: 'chase'; target: CharacterId } | { kind: 'idle' }`;
-  - `chooseEnemyOrders(state: WorldState): readonly EnemyOrder[]`, with one order per enemy, in `state.enemies` order.
-  - The file's doc comment says it is the Phase 2 placeholder, to be replaced.
-- **Produces in `combat.ts`:**
-  - `resolveCombat(state, now): WorldState`: spec step 9;
-  - `resolveDeaths(state, now): WorldState`: spec step 10;
-  - `healDummies(state, now): WorldState`: spec step 11.
-  - All of them fill `hits`, `recaps` and `respawned`.
 - **Produces intention kinds:** `'attack' {enemyId}` and `'attack-move' {target: Tile}`.
+  - Task 4 carries out `attack`.
+  - An `attack-move` order is stored and walks to its destination; Task 5 adds the locking.
+- **Produces in `combat.ts`:**
+  - `resolveCombat(state, now): WorldState`: spec step 9. Task 4 does phase 9.2, the player basic attacks; Task 5 adds 9.1 and 9.3.
+  - `resolveDeaths(state, now): WorldState`: spec step 10;
+  - `respawnDowned(state, now): WorldState`: the respawn part of spec step 2;
+  - `healDummies(state, now): WorldState`: spec step 11.
+  - All of them fill `hits`, `recaps`, `downed` and `respawned`.
+- **Produces on `Character`:** `respawnTick: number | null`.
 
 - [ ] **Step 1: Write the failing tests** (`combat.test.ts`, arena world, seed fixed).
   - **Expected amounts:** assert each hit's amount equals `computeDamage` with `rollSpread(stateBefore.rng).percent`, never a hard-coded spread.
   - **Melee hits:** militia next to the dummy with an `attack` order → hits on ticks t, t+4 and t+8. `hits[0]` is `{attacker:{side:'player',id:1}, target:{side:'enemy',id:1}, …}`.
   - **The interval holds:** the attacker walks away at t+1 and comes back at t+2 → no hit before t+4.
-  - **Chasing:** an `attack` order on a slime 5 tiles away → the player walks, and hits on the first tick it's in reach.
+  - **Chasing:** an `attack` order on the slime 5 tiles away (it stands idle until Task 5 adds the AI) → the player walks, and hits on the first tick it's in reach.
   - **Ranged:**
     - Hunter with the bow and an `attack` order from 6 tiles with a clear line → hits without moving.
     - With a pillar between, the player moves until it has a line, then hits.
   - **Corners:** a shortsword diagonal past a pillar's corner → no hit; the player steps to an orthogonal tile first.
+  - **No weapon:** after `debug-weapon null`, an `attack` intention is ignored.
+  - **Review Focus 1:**
+    - Two players attack one slime, and it dies to the first hit of the tick → the second hit lands on its body this tick (≤ 0 health). Next tick both orders are `none`, and nothing is thrown.
+    - A wave start during a chase ends the order.
+  - **Death:** a test state with a player at 0 health, two `recentHits`, and an enemy whose `lastDamagedBy` is that player. After one step:
+    - the player is down at the spot where they fell, with `respawnTick` = now + 1 and order `none`;
+    - `recaps` has one entry with those two hits;
+    - `downed` contains the player;
+    - the enemy's `lastDamagedBy` is null.
+    - After the next step, the player is on the spawn tile at full health, listed in `respawned`, with `recentHits` empty.
+    - While down, an `attack` intention from that player is ignored.
+  - **The dummy** never moves. With 900 health at tick h, it's back to full at h+20, not at h+19.
+- [ ] **Step 2: Run** the tests. Expected: FAIL.
+- [ ] **Step 3: Implement** spec steps 2 (respawn), 5, 7 (`attack` orders), 9.2, 10 and 11 in `step`.
+- [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: PASS.
+- [ ] **Step 5: Commit** with the message `Combat: attack orders, basic attacks, damage, death and respawn, the training dummy`.
+
+### Task 5: The placeholder AI, slime touch, attack-move, invariants
+
+**Files:**
+- Create `packages/shared/src/enemy-ai.ts` and `enemy-ai.test.ts`.
+- Modify `combat.ts`, `combat.test.ts`, `world.ts` and `determinism.test.ts`.
+
+**Interfaces:**
+- **Consumes:** Task 4.
+- **Produces in `enemy-ai.ts`:**
+  - `type EnemyOrder = { kind: 'chase'; target: CharacterId } | { kind: 'idle' }`;
+  - `chooseEnemyOrders(state: WorldState): readonly EnemyOrder[]`, with one order per enemy, in `state.enemies` order.
+  - The file's doc comment says it is the Phase 2 placeholder, to be replaced.
+- **Produces in `combat.ts`:** phases 9.1 (windups resolve) and 9.3 (windups start), and `attack-move` locking during planning.
+
+- [ ] **Step 1: Write the failing tests.**
   - **Slime touch:**
     - The slime chases the nearest player.
     - The windup starts on tick T with `tiles` = [the player's tile] and `resolvesAt` T+1.
@@ -335,32 +363,29 @@
   - **Targeting** (`enemy-ai.test.ts`):
     - Players A (near) and B (far) → the slime chases A.
     - After B hits it, it chases B.
-    - After B dies, it chases the nearest player again.
+    - After B dies, it chases the nearest player who isn't down: A, even though B's body is nearer.
     - After B leaves, likewise.
     - The dummy idles.
-  - **Death:**
-    - A player at 1 health hit by a touch → in the same tick: back on the spawn tile at full health, order `none`;
-    - `recaps` has one entry whose last hit is the slime's touch;
-    - `respawned` contains the player.
-    - Review Focus 4: the slime's next windup, aimed at the old tile, resolves without hitting.
+  - **Dying under a windup (Review Focus 4):** a player at 1 health takes a touch and goes down. A second slime's windup on that tile resolves while they are down, and doesn't hit them. They respawn the next tick.
   - **Attack-move:**
     - Walking past the slime → locks onto it while it's in reach, attacks it, and resumes toward the destination once it dies.
     - With the dummy and the slime both in reach → locks onto the nearer one (ties go to the lower id).
-  - **Review Focus 1:** two players attack one slime, and it dies to the first hit of the tick → the second hit lands on its body this tick (≤ 0 health), and next tick both orders are `none` with nothing thrown. A wave start during a chase ends the order.
-  - **The dummy** never moves. With 900 health at tick h → full again at h+20, not at h+19.
-  - **Invariant (Review Focus 5):** 300 ticks of `wave-1` with 3 players attack-moving across the arena, on 3 seeds. After every tick, no enemy shares a tile with an enemy or a player.
-  - **Determinism:** extend `determinism.test.ts` with a combat script on `createArenaWorld(content, 'arena', 12345)` covering the practice wave, attacks, attack-move, a death and `wave-1`. Two runs give `JSON.stringify`-equal final states. Seed 54321 gives different `hits` amounts somewhere.
+    - A locked slime that leaves reach is dropped, and walking resumes.
+  - **Invariant (Review Focus 5):** 300 ticks of `wave-1` with 3 players attack-moving across the arena, on 3 seeds. After every tick, no enemy shares a tile with an enemy or with a player who isn't down.
+  - **Determinism:** extend `determinism.test.ts` with a combat script on `createArenaWorld(content, 'arena', 12345)`. It covers the practice wave, attacks, attack-move, a death and `wave-1`.
+    - Two runs give `JSON.stringify`-equal final states.
+    - Seed 54321 gives different `hits` amounts somewhere.
 - [ ] **Step 2: Run** the tests. Expected: FAIL.
-- [ ] **Step 3: Implement** spec steps 5 to 11 in `step`. Every enemy-AI decision lives in `enemy-ai.ts`; the engine only carries out `EnemyOrder`s.
+- [ ] **Step 3: Implement** spec steps 6, 7 (enemy chase and attack-move), 9.1 and 9.3. Every enemy-AI decision lives in `enemy-ai.ts`; the engine only carries out `EnemyOrder`s.
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: PASS.
-- [ ] **Step 5: Commit** with the message `Combat: attack orders, attack-move, slime touch with telegraphs, placeholder enemy AI, death and respawn`.
+- [ ] **Step 5: Commit** with the message `Combat: placeholder enemy AI, slime touch with telegraphs, attack-move`.
 
-### Task 5: Protocol
+### Task 6: Protocol
 
 **Files:** modify `packages/shared/src/protocol.ts` and `protocol.test.ts`.
 
 **Interfaces:**
-- **Consumes:** Task 4's state and events.
+- **Consumes:** Tasks 4 and 5's state and events.
 - **Produces views:**
   - `CharacterView` gains `health` and `maxHealth`;
   - `EnemyView { id, x, y, speed, name, family, health, maxHealth }` and `MovedEnemyView` (with `via`);
@@ -368,7 +393,7 @@
   - `TelegraphView { enemyId, tiles: {x,y}[], kind: DamageKind, resolvesAt: number }`, where `resolvesAt` is the message tick on which it lands: `windup.resolvesAt + 1`;
   - `HitView { attacker: Ref; target: Ref; amount }`.
 - **Produces `TickMessage` additions:**
-  - `vitals: VitalsView[]` and `respawned: CharacterId[]`;
+  - `vitals: VitalsView[]`, `downed: CharacterId[]` and `respawned: CharacterId[]`;
   - `enemies: { spawned: EnemyView[]; moved: MovedEnemyView[]; removed: EnemyId[]; vitals: VitalsView[] }`;
   - `telegraphs: TelegraphView[]` and `hits: HitView[]`.
   - All lists are sorted by id; hits keep their event order.
@@ -394,8 +419,8 @@
 
 - [ ] **Step 1: Write the failing tests.**
   - The new tick and welcome fields, after a scripted fight.
-  - A respawn appears in `respawned` and `moved`.
-  - **Hidden information:** `JSON.stringify` of every welcome, tick, sheet and recap message from the Task 4 determinism script contains none of the keys `resistances`, `lastDamagedBy`, `lastHitTick`, `order`, `recentHits`, `rng`, `path`, `progress`, `stepped`, `readyTick`, `nextAttackTick`.
+  - A death appears in `downed` (the player still at the spot where they fell, at 0 health); the next tick's message has them in `respawned` and `moved`.
+  - **Hidden information:** `JSON.stringify` of every welcome, tick, sheet and recap message from the Task 5 determinism script contains none of the keys `resistances`, `lastDamagedBy`, `lastHitTick`, `order`, `recentHits`, `rng`, `path`, `progress`, `stepped`, `readyTick`, `nextAttackTick`, `respawnTick`.
   - **`parseClientMessage`:**
     - accepts each new message;
     - rejects extra keys, `level: 11`, `rank: 0`, `enemyId: 1.5`, `waveId: "Wave 1"`, and a 65-character id.
@@ -405,7 +430,7 @@
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message `Protocol for combat: health, enemies, telegraphs, hits, sheet, recap, debug catalog and messages`.
 
-### Task 6: Server: content, arena, seed, combat intentions, private messages
+### Task 7: Server: content, arena, seed, combat intentions, private messages
 
 **Files:**
 - Create `packages/server/src/load-content.ts` and `load-content.test.ts`.
@@ -415,7 +440,7 @@
   - `packages/server/package.json` (add `"@epochs/tools": "*"`; then run `npm install` to update the lock file).
 
 **Interfaces:**
-- **Consumes:** `readContentFiles` from `@epochs/tools/content-files`, `CONTENT_DIR` from `@epochs/tools/paths`, `buildContentBundle`, `formatProblem`, `createArenaWorld`, and the Task 5 builders.
+- **Consumes:** `readContentFiles` from `@epochs/tools/content-files`, `CONTENT_DIR` from `@epochs/tools/paths`, `buildContentBundle`, `formatProblem`, `createArenaWorld`, and the Task 6 builders.
 - **Produces:**
   - `loadContent(contentDir: string): ContentBundle`, which throws an `Error` whose message lists every problem line;
   - `WorldServerOptions.world?: WorldState`, the initial world, which overrides `rows` and `spawn`.
@@ -445,14 +470,14 @@
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Then run `npm run dev` and check that `/health` answers and the log shows the seed.
 - [ ] **Step 5: Commit** with the message `Server: load content and the arena at startup, seed, combat and debug intentions, private sheet and recap`.
 
-### Task 7: Client state and connection
+### Task 8: Client state and connection
 
 **Files:**
 - Create `packages/client/src/floating-numbers.ts` and its test.
 - Modify `client-world.ts`, `client-world.test.ts` and `connection.ts`.
 
 **Interfaces:**
-- **Consumes:** Task 5's messages.
+- **Consumes:** Task 6's messages.
 - **`ClientWorld` gains:**
   - `enemyIds()`, `enemyPositionOf(id, now)`, `enemyTileOf(id)`, `enemyAt(tile): EnemyId | undefined`, `enemyInfo(id): { name; family; health; maxHealth }`;
   - `healthOf(id)` and `maxHealthOf(id)` for players;
@@ -470,7 +495,7 @@
 
 - [ ] **Step 1: Write the failing tests.**
   - Welcome and tick application for enemies: spawned, moved with `via`, removed, vitals.
-  - A respawn snaps to the new tile.
+  - A downed player stays where they fell; on the next tick the respawn snaps to the new tile.
   - Telegraphs are replaced every tick.
   - Numbers appear only for your hits and expire after 900 ms.
   - `enemyAt` finds the latest server tile.
@@ -481,13 +506,13 @@
 - [ ] **Step 4: Run** `npm test` and `npm run typecheck`. Expected: PASS.
 - [ ] **Step 5: Commit** with the message `Client state for combat: enemies, health, telegraphs, damage numbers, sheet and recap`.
 
-### Task 8: Client interface: drawing, attack input, debug panel, recap
+### Task 9: Client interface: drawing, attack input, debug panel, recap
 
 **Files:**
 - Create `packages/client/src/debug-panel.ts` and `packages/client/src/recap.ts`.
 - Modify `render.ts`, `main.ts` and `style.css`.
 
-**Interfaces:** consumes Task 7.
+**Interfaces:** consumes Task 8.
 
 **Fixed values:**
 - **Enemy colours by family:** slime `0x6fcf6f`, construct `0xa08060`, anything else `0xd05050`.
@@ -515,11 +540,11 @@
   - A "Close" button; Esc also closes it.
 - [ ] **Step 5: Verify.**
   - `npm test` and `npm run typecheck`.
-  - `npm run build -w @epochs/client`, then search `packages/client/dist` for `ZodError`. Expected: no match.
+  - `npm run build -w @epochs/client`, then search `packages/client/dist` for `ZodError` and for `invalid_type` (a Zod issue code that survives minifying). Expected: no match. Also note the compressed size of the main script; 0.3's was about 80 KB, and a jump of 15 KB or more means Zod got in.
   - `npm run dev`. Check every item on the brief's Done-when list by hand in a browser: walk to the dummy and slime, attack both (click, and A-click), take damage, die, read the recap.
 - [ ] **Step 6: Commit** with the message `Client: enemies, telegraphs, health bars, damage numbers, attack and attack-move, debug panel, death recap`.
 
-### Task 9: Report
+### Task 10: Report
 
 **Files:** create `docs/reports/2.1-fighting-basics.md`.
 
@@ -528,6 +553,9 @@
   - how to run it;
   - what to check by hand, a numbered walkthrough of the Done-when list using the practice wave;
   - things to know: the builder's calls 1 to 14 from the spec, for Peter to confirm;
+  - in "How to run it", that `npm ci` is needed after the merge, because the server now depends on `@epochs/tools` and `package-lock.json` changed;
+  - in the walkthrough, how to reach the recap quickly: a slime does 1 damage per touch through the jerkin, so dying takes about 45 s. Set armor to "none" or start wave 1;
+  - that the class-rank control lists only Militia for now: Hunter and Hedge Witch class files arrive in 2.2, although all three presets ship now;
   - open design questions, such as campfire healing, how slime damage against the jerkin feels (1 per touch), and what the class ranks will do once 2.2 gives them meaning;
   - the test count.
 - [ ] **Step 2: Final verification.** Run `npm test`, `npm run typecheck` and `npm run check-content`, and put the real output figures in the report.

@@ -8,7 +8,10 @@ The rules come from `docs/phase-2-brief.md`: its milestone 2.1, the "Damage" sec
 
 1. **Tick order.** Every tick runs the same phases in a fixed order (below). Within each phase, players act in id order, then enemies in id order.
 2. **Hits within a tick land one after another,** and deaths are handled once all hits are done. A character at 0 health or below doesn't act for the rest of the tick, but can still be hit.
-3. **Respawn happens in the tick you die.** You're back at the campfire in the same tick message that reports the hit that killed you.
+3. **Down for one tick.** A player who dies on tick T is down until tick T+1, then respawns at the campfire (Peter: "on the next tick").
+   - While down they can't act, don't block, can't be targeted and can't be hit.
+   - The tick message that reports the killing hit shows them still at the spot where they fell, at 0 health, and their recap arrives with it.
+   - The next tick message shows them at the campfire.
 4. **Slime cadence.** A touch starts on tick T and resolves on T+1. Ticks T+2 to T+4 are the 3-tick wait, and the next touch can start on T+5.
 5. **Weapon cadence.** A swing on tick T allows the next swing on T + interval.
 6. **Ranges use the same distance as movement:** a diagonal tile is 1 away (Chebyshev). Melee is range 1. Anything with range above 1 also needs line of sight.
@@ -30,7 +33,7 @@ The rules come from `docs/phase-2-brief.md`: its milestone 2.1, the "Damage" sec
 - `content`: the loaded content bundle, read-only.
 - `rng`: the generator's 32-bit state.
 - `nextEnemyId`.
-- This tick's events: `hits`, `respawned` and `recaps`. Like `stepped`, these are rebuilt every tick.
+- This tick's events: `hits`, `downed`, `respawned` and `recaps`. Like `stepped`, these are rebuilt every tick.
 
 A **player character** (`Character`) gains:
 
@@ -42,7 +45,8 @@ A **player character** (`Character`) gains:
   - `attack` (an enemy id);
   - `attack-move` (a destination, plus the enemy it's locked onto, or null);
 - `nextAttackTick`;
-- `recentHits`: the last 5 hits taken, used for the recap.
+- `recentHits`: the last 5 hits taken, used for the recap;
+- `respawnTick`: the tick on which a downed player respawns, or null while alive.
 
 An **enemy** has:
 
@@ -64,7 +68,7 @@ When the level is raised, the new points go to the preset's main attribute. When
 ## One tick
 
 1. **Sort the intentions** by subtick, then character id, as today.
-2. **Joins and leaves.** A joining player gets the arena's starting preset, at level 1 and full health.
+2. **Joins and leaves.** A joining player gets the arena's starting preset, at level 1 and full health. Then every downed player whose `respawnTick` ≤ now respawns on the nearest free tile to the spawn, with full health, no order and no path. Their recent hits are cleared and `respawnTick` goes back to null.
 3. **Debug intentions,** in order:
    - preset, level, move a point, weapon, armor, class rank, and heal all apply to the sender;
    - start a wave, and clear enemies.
@@ -74,7 +78,7 @@ When the level is raised, the new points go to the preset's main attribute. When
 6. **Enemy orders.** These come from `chooseEnemyOrders(state)` in `enemy-ai.ts`, the placeholder AI.
    - It returns `chase(target)` or `idle` for each enemy.
    - An enemy with no attacks or zero speed idles.
-   - Otherwise it targets `lastDamagedBy`, if that player is still in the world, or else the nearest player (ties go to the lowest id).
+   - Otherwise it targets `lastDamagedBy`, if that player is still in the world and not down, or else the nearest player who isn't down (ties go to the lowest id).
 7. **Plan paths,** from where everyone stands at the start of this tick.
    - **Attack:** if the enemy is gone, the order ends. If it's in reach, stand still. Otherwise route toward it.
    - **Attack-move:**
@@ -85,22 +89,23 @@ When the level is raised, the new points go to the preset's main attribute. When
    - **Enemy chase:** stand still while winding up or while the target is in reach. Otherwise route toward the target.
    - **Routes and blockers.** Routes use `findRoute` on `withBlockers(grid, tiles)`.
      - For a player, the blocked tiles are the enemies' tiles.
-     - For an enemy, they're the other enemies' tiles plus the players' tiles.
+     - For an enemy, they're the other enemies' tiles plus the tiles of players who aren't down.
 8. **Movement.**
    - Players move in id order, then enemies in id order. Each mover uses the stepping rule from 0.2.1, checked against blockers that reflect where everyone has already moved this tick.
    - When an occupied tile blocks the next step, re-route once (builder's call 7).
 9. **Combat,** with reach checked from where everyone stands after movement:
-   1. **Enemy windups due this tick resolve,** in enemy id order. Every player standing on a covered tile is hit. Then `readyTick` = now + cooldown + 1, and the windup clears.
+   1. **Enemy windups due this tick resolve,** in enemy id order. Every player standing on a covered tile who isn't down is hit. Then `readyTick` = now + cooldown + 1, and the windup clears.
    2. **Player basic attacks,** in player id order. A player whose target (attack or locked) is in reach, and whose `nextAttackTick` ≤ now, hits it with the weapon's damage. Then `nextAttackTick` = now + interval. A hit with an amount above 0 sets the enemy's `lastDamagedBy` and `lastHitTick`.
    3. **Enemy windups start,** in enemy id order. An enemy that is chasing, has no windup, has `readyTick` ≤ now, and has its target in reach starts its first attack. The covered tile is the one the target stands on, and the windup resolves on now + windup ticks.
    - Every hit rolls one spread from `rng`, in exactly this order.
 10. **Deaths.**
     - An enemy at 0 health or below is removed.
-    - A player at 0 health or below:
-      - gets a recap event listing their recent hits;
-      - respawns on the nearest free tile to the spawn, with full health, no order and no path;
-      - has their recent hits cleared;
-      - is forgotten by every enemy that had them as `lastDamagedBy`.
+    - A player at 0 health or below goes down:
+      - they get a recap event listing their recent hits;
+      - their health is set to 0, their order to none and their path to empty;
+      - `respawnTick` = now + 1;
+      - every enemy that had them as `lastDamagedBy` forgets them.
+    - Down players skip planning, movement and attacks until they respawn in step 2.
 11. **The training dummy** (an enemy with `healsAfterTicks`) heals to full once now − `lastHitTick` ≥ 20, then clears `lastHitTick`.
 12. **The tick counter goes up by 1.**
 
@@ -149,7 +154,7 @@ The server loads and checks `content/` at startup, and refuses to start if there
 
 - **Characters:**
   - every view adds `health` and `maxHealth`;
-  - tick messages add `vitals` (health changes) and `respawned` (draw these at the new tile at once, without a slide).
+  - tick messages add `vitals` (health changes), `downed` (players who died this tick) and `respawned` (draw these at the new tile at once, without a slide).
 - **Enemies:**
   - `{ id, x, y, speed, name, family, health, maxHealth }`;
   - tick messages carry them as spawned, moved (with `via`), removed, and vitals.
