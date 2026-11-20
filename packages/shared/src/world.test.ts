@@ -1,18 +1,28 @@
+// The arena tests read the real `content/` folder with Node's file system (tests are type-checked with Node types).
+import { readFileSync, readdirSync } from 'node:fs';
+import { basename, join as joinPath } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   DEBUG_MOVEMENT_MODES,
   DEFAULT_SPEED,
+  EMPTY_CONTENT,
   MAX_SPEED,
   MAX_STEPS_PER_TICK,
   STEP,
+  attributesOf,
+  buildContentBundle,
+  createArenaWorld,
   createWorld,
   findSpawnTile,
   gridFromRows,
   isDebugMovementMode,
+  maxHealthOf,
+  newSheet,
   sameTile,
   step,
 } from './index';
-import type { DebugMovementMode, Grid, Intention, Tile, WorldState } from './index';
+import type { Character, ContentBundle, DebugMovementMode, Grid, Intention, Tile, WorldState } from './index';
 
 function open(width: number, height: number): Grid {
   return gridFromRows(Array.from({ length: height }, () => '.'.repeat(width)));
@@ -36,6 +46,22 @@ function move(characterId: number, target: Tile, subtick = 0): Intention {
 
 function mode(characterId: number, value: DebugMovementMode, subtick = 0): Intention {
   return { kind: 'mode', characterId, mode: value, subtick };
+}
+
+/**
+ * A character as a fresh join in an empty-content world would have it, with the given walking fields:
+ * no preset, full health, no order. For literal `Character`s in tests.
+ */
+function newCharacter(walking: Pick<Character, 'id' | 'tile' | 'path' | 'speed' | 'progress' | 'stepped'>): Character {
+  const sheet = newSheet(EMPTY_CONTENT, null);
+  return {
+    ...walking,
+    health: maxHealthOf(sheet, EMPTY_CONTENT),
+    sheet,
+    order: { kind: 'none' },
+    nextAttackTick: 0,
+    recentHits: [],
+  };
 }
 
 function tileOf(state: WorldState, id: number): Tile {
@@ -91,7 +117,7 @@ describe('step: joining and leaving', () => {
     const world = step(createWorld(open(5, 5), t(2, 2)), [join(1)]);
     expect(world.tick).toBe(1);
     expect(world.characters).toEqual([
-      { id: 1, tile: t(2, 2), path: [], speed: DEFAULT_SPEED, progress: STEP, stepped: [] },
+      newCharacter({ id: 1, tile: t(2, 2), path: [], speed: DEFAULT_SPEED, progress: STEP, stepped: [] }),
     ]);
   });
 
@@ -244,7 +270,7 @@ describe('step: moving', () => {
     const stale: WorldState = {
       ...base,
       characters: [
-        { id: 1, tile: t(0, 0), path: [t(2, 0)], speed: DEFAULT_SPEED, progress: STEP, stepped: [] },
+        newCharacter({ id: 1, tile: t(0, 0), path: [t(2, 0)], speed: DEFAULT_SPEED, progress: STEP, stepped: [] }),
       ],
     };
     const after = step(stale, []);
@@ -527,5 +553,252 @@ describe('step: debug mode changes', () => {
   it('the last mode in (subtick, id) order wins, and one for a character joining this tick is honoured', () => {
     const world = step(createWorld(open(12, 12), t(1, 5)), [mode(1, 'run', 3), mode(1, 'horse', 1), join(1)]);
     expect(characterOf(world, 1).speed).toBe(DEBUG_MOVEMENT_MODES.run);
+  });
+});
+
+// --- Arena worlds, sheets and debug intentions -----------------------------------------------------
+
+const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+
+/** The real content bundle, built from the files under `content/`. */
+function realContent(): ContentBundle {
+  const files = readdirSync(`${repoRoot}content`, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.json'))
+    .map((e) => ({
+      path: `content/${basename(e.parentPath)}/${e.name}`,
+      text: readFileSync(joinPath(e.parentPath, e.name), 'utf8'),
+    }));
+  const { bundle } = buildContentBundle(files);
+  if (!bundle) throw new Error('The real content does not load.');
+  return bundle;
+}
+
+const content = realContent();
+
+/** The arena with player 1 joined (at the spawn, as a militia). */
+function arenaWithOne(): WorldState {
+  return step(createArenaWorld(content, 'arena', 7), [join(1)]);
+}
+
+/** A copy of the state with one character's health set directly. */
+function withHealth(state: WorldState, id: number, health: number): WorldState {
+  return { ...state, characters: state.characters.map((c) => (c.id === id ? { ...c, health } : c)) };
+}
+
+/** A debug intention from character 1, at subtick 0 unless `fields` says otherwise. */
+function debug(fields: Record<string, unknown>): Intention {
+  return { characterId: 1, subtick: 0, ...fields } as unknown as Intention;
+}
+
+describe('createWorld and createArenaWorld', () => {
+  it('createWorld defaults to no content, seed 1, no campfire, no preset, no enemies and no events', () => {
+    const world = createWorld(open(5, 5), t(2, 2));
+    expect(world.content).toEqual(EMPTY_CONTENT);
+    expect(world.rng).toBe(1);
+    expect(world.campfire).toBeNull();
+    expect(world.startingPresetId).toBeNull();
+    expect(world.enemies).toEqual([]);
+    expect(world.nextEnemyId).toBe(1);
+    expect([world.hits, world.downed, world.respawned, world.recaps]).toEqual([[], [], [], []]);
+  });
+
+  it('a join in an empty-content world has no preset and the base health', () => {
+    const world = step(createWorld(open(5, 5), t(2, 2)), [join(1)]);
+    const character = characterOf(world, 1);
+    expect(character.sheet).toEqual(newSheet(EMPTY_CONTENT, null));
+    expect(character.health).toBe(33); // 30 + 3 x Vigor 1
+    expect(character.order).toEqual({ kind: 'none' });
+    expect(character.recentHits).toEqual([]);
+  });
+
+  it('createArenaWorld uses the arena rows, spawn, campfire (blocked) and seed', () => {
+    const world = createArenaWorld(content, 'arena', 12345);
+    expect(world.spawn).toEqual(t(12, 19));
+    expect(world.campfire).toEqual(t(12, 20));
+    expect(world.grid.blocked[20 * world.grid.width + 12]).toBe(true);
+    expect(world.grid.width).toBe(24);
+    expect(world.rng).toBe(12345);
+    expect(world.content).toBe(content);
+    expect(world.startingPresetId).toBe('militia');
+  });
+
+  it('createArenaWorld throws on an unknown arena, including inherited names', () => {
+    expect(() => createArenaWorld(content, 'nope', 1)).toThrow();
+    expect(() => createArenaWorld(content, 'constructor', 1)).toThrow();
+  });
+
+  it('a joining player has the militia sheet, 36 health, and stands on (12,19)', () => {
+    const character = characterOf(arenaWithOne(), 1);
+    expect(character.sheet).toEqual(newSheet(content, 'militia'));
+    expect(character.sheet.weaponId).toBe('rusty-shortsword');
+    expect(character.health).toBe(36);
+    expect(character.tile).toEqual(t(12, 19));
+    expect(character.nextAttackTick).toBe(0);
+  });
+
+  it('step clears the event lists every tick', () => {
+    const stale: WorldState = {
+      ...arenaWithOne(),
+      downed: [1],
+      respawned: [1],
+      recaps: [{ characterId: 1, tick: 0, hits: [] }],
+    };
+    const after = step(stale, []);
+    expect([after.hits, after.downed, after.respawned, after.recaps]).toEqual([[], [], [], []]);
+  });
+});
+
+describe('step: debug intentions', () => {
+  /** The arena with player 1 joined and hurt to 10 health, so a wrongful heal shows. */
+  const hurt = (): WorldState => withHealth(arenaWithOne(), 1, 10);
+
+  it('debug-level 5 gives Might 8 and full health', () => {
+    const world = step(hurt(), [debug({ kind: 'debug-level', level: 5 })]);
+    const character = characterOf(world, 1);
+    expect(character.sheet.level).toBe(5);
+    expect(attributesOf(character.sheet, content).might).toBe(8);
+    expect(character.health).toBe(maxHealthOf(character.sheet, content));
+    expect(character.health).toBe(56);
+  });
+
+  it('debug-weapon hunting-bow equips the bow and heals', () => {
+    const character = characterOf(step(hurt(), [debug({ kind: 'debug-weapon', itemId: 'hunting-bow' })]), 1);
+    expect(character.sheet.weaponId).toBe('hunting-bow');
+    expect(character.health).toBe(36);
+  });
+
+  it('debug-weapon null and debug-armor null unequip and heal', () => {
+    const world = step(hurt(), [debug({ kind: 'debug-weapon', itemId: null }), debug({ kind: 'debug-armor', itemId: null })]);
+    const character = characterOf(world, 1);
+    expect(character.sheet.weaponId).toBeNull();
+    expect(character.sheet.armorId).toBeNull();
+    expect(character.health).toBe(36);
+  });
+
+  it('debug-heal restores full health', () => {
+    const character = characterOf(step(hurt(), [debug({ kind: 'debug-heal' })]), 1);
+    expect(character.health).toBe(36);
+  });
+
+  it('debug-preset switches the preset gear and attributes, and heals', () => {
+    const character = characterOf(step(hurt(), [debug({ kind: 'debug-preset', presetId: 'hunter' })]), 1);
+    expect(character.sheet.presetId).toBe('hunter');
+    expect(character.sheet.weaponId).toBe('hunting-bow');
+    expect(character.health).toBe(36);
+  });
+
+  it('debug intentions apply one after another in (subtick, id) order', () => {
+    const world = step(hurt(), [
+      debug({ kind: 'debug-level', level: 3, subtick: 2 }),
+      debug({ kind: 'debug-preset', presetId: 'hunter', subtick: 1 }),
+    ]);
+    // The preset first, then the level: both new points go to Finesse (1 + 3 birth + 2).
+    expect(attributesOf(characterOf(world, 1).sheet, content).finesse).toBe(6);
+  });
+
+  it('debug-move-point moves a level point and heals to the new max', () => {
+    let world = step(hurt(), [debug({ kind: 'debug-level', level: 3 })]);
+    world = withHealth(world, 1, 10);
+    world = step(world, [debug({ kind: 'debug-move-point', from: 'might', to: 'vigor' })]);
+    const character = characterOf(world, 1);
+    expect(attributesOf(character.sheet, content)).toMatchObject({ might: 5, vigor: 3 });
+    expect(character.health).toBe(30 + 2 * 5 + 3 * 3);
+  });
+
+  it('debug-class-rank sets a class rank and heals', () => {
+    const character = characterOf(step(hurt(), [debug({ kind: 'debug-class-rank', classId: 'militia', rank: 3 })]), 1);
+    expect(character.sheet.classRanks.militia).toBe(3);
+    expect(character.health).toBe(36);
+  });
+
+  it('invalid ids and values change nothing, not even health', () => {
+    const before = hurt();
+    const unchanged = step(before, []);
+    const hostile = [
+      debug({ kind: 'debug-weapon', itemId: 'leather-jerkin' }),
+      debug({ kind: 'debug-armor', itemId: 'hunting-bow' }),
+      debug({ kind: 'debug-level', level: 11 }),
+      debug({ kind: 'debug-level', level: 0 }),
+      debug({ kind: 'debug-level', level: 1.5 }),
+      debug({ kind: 'debug-move-point', from: 'might', to: 'vigor' }), // no level points to move at level 1
+      debug({ kind: 'debug-move-point', from: 'constructor', to: 'vigor' }),
+      debug({ kind: 'debug-class-rank', classId: 'militia', rank: 4 }),
+      ...['constructor', 'nope', 'toString', '__proto__'].flatMap((id) => [
+        debug({ kind: 'debug-preset', presetId: id }),
+        debug({ kind: 'debug-weapon', itemId: id }),
+        debug({ kind: 'debug-armor', itemId: id }),
+        debug({ kind: 'debug-class-rank', classId: id, rank: 2 }),
+        debug({ kind: 'debug-start-wave', waveId: id }),
+      ]),
+    ];
+    for (const intention of hostile) {
+      expect(step(before, [intention]), JSON.stringify(intention)).toEqual(unchanged);
+    }
+    expect(step(before, hostile)).toEqual(unchanged);
+  });
+
+  it('debug intentions from a character not in the world are ignored', () => {
+    const before = hurt();
+    const stranger = (fields: Record<string, unknown>): Intention =>
+      ({ characterId: 99, subtick: 0, ...fields }) as unknown as Intention;
+    const after = step(before, [stranger({ kind: 'debug-heal' }), stranger({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    expect(after).toEqual(step(before, []));
+  });
+
+  it("debug-start-wave 'practice' places the dummy and the slime", () => {
+    const world = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    expect(world.enemies.map((e) => ({ id: e.id, contentId: e.contentId, tile: e.tile }))).toEqual([
+      { id: 1, contentId: 'training-dummy', tile: t(8, 4) },
+      { id: 2, contentId: 'slime', tile: t(15, 4) },
+    ]);
+    expect(world.enemies[1]).toEqual({
+      id: 2,
+      contentId: 'slime',
+      tile: t(15, 4),
+      path: [],
+      speed: 500,
+      progress: STEP,
+      stepped: [],
+      health: 12,
+      lastDamagedBy: null,
+      lastHitTick: null,
+      windup: null,
+      readyTick: 1,
+    });
+    expect(world.nextEnemyId).toBe(3);
+  });
+
+  it("a second start-wave 'wave-1' gives ids 3, 4 and 5 and removes the old enemies", () => {
+    let world = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    world = step(world, [debug({ kind: 'debug-start-wave', waveId: 'wave-1' })]);
+    expect(world.enemies.map((e) => ({ id: e.id, contentId: e.contentId, tile: e.tile }))).toEqual([
+      { id: 3, contentId: 'slime', tile: t(6, 3) },
+      { id: 4, contentId: 'slime', tile: t(12, 3) },
+      { id: 5, contentId: 'slime', tile: t(18, 3) },
+    ]);
+    expect(world.nextEnemyId).toBe(6);
+  });
+
+  it('debug-clear-enemies leaves no enemies, and the ids keep counting', () => {
+    let world = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    world = step(world, [debug({ kind: 'debug-clear-enemies' })]);
+    expect(world.enemies).toEqual([]);
+    world = step(world, [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    expect(world.enemies.map((e) => e.id)).toEqual([3, 4]);
+  });
+
+  it('leaves the input state and intentions unchanged', () => {
+    const started = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    const before = withHealth(started, 1, 10);
+    const snapshot = structuredClone(before);
+    const intentions = [
+      debug({ kind: 'debug-level', level: 4 }),
+      debug({ kind: 'debug-start-wave', waveId: 'wave-1' }),
+      move(1, t(12, 10)),
+    ];
+    const intentionsSnapshot = structuredClone(intentions);
+    step(before, intentions);
+    expect(before).toEqual(snapshot);
+    expect(intentions).toEqual(intentionsSnapshot);
   });
 });

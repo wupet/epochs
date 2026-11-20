@@ -4,6 +4,8 @@ export * from './grid';
 export * from './route';
 export * from './movement';
 export * from './world';
+export * from './walking';
+export * from './waves';
 export * from './protocol';
 export * from './content';
 export * from './rng';
