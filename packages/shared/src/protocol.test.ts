@@ -3,6 +3,7 @@ import {
   MAX_CLIENT_MESSAGE_LENGTH,
   createWorld,
   gridFromRows,
+  fullMessage,
   gridToRows,
   parseClientMessage,
   queueMessage,
@@ -154,6 +155,12 @@ describe('tickMessage', () => {
 describe('queueMessage', () => {
   it('carries the position in the queue', () => {
     expect(queueMessage(3)).toEqual({ type: 'queue', position: 3 });
+  });
+});
+
+describe('fullMessage', () => {
+  it('says only that the server is full', () => {
+    expect(fullMessage()).toEqual({ type: 'full' });
   });
 });
 

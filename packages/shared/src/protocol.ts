@@ -57,7 +57,12 @@ export interface QueueMessage {
   readonly position: number;
 }
 
-export type ServerMessage = WelcomeMessage | TickMessage | QueueMessage;
+/** Sent to a connection turned away because both the world and its queue are full. The server then closes it. */
+export interface FullMessage {
+  readonly type: 'full';
+}
+
+export type ServerMessage = WelcomeMessage | TickMessage | QueueMessage | FullMessage;
 
 /** A client's intention to walk to a tile. The server decides whether and how it happens. */
 export interface MoveMessage {
@@ -84,6 +89,10 @@ export function viewOf(character: Character): CharacterView {
 
 export function queueMessage(position: number): QueueMessage {
   return { type: 'queue', position };
+}
+
+export function fullMessage(): FullMessage {
+  return { type: 'full' };
 }
 
 function byId(a: { readonly id: CharacterId }, b: { readonly id: CharacterId }): number {

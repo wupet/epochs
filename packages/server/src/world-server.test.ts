@@ -3,7 +3,7 @@ import { WebSocket } from 'ws';
 import { TICK_MS, step } from '@epochs/shared';
 import type { CharacterView, ServerMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ManualClock } from './manual-clock';
-import { MAX_PLAYERS, createWorldServer } from './world-server';
+import { MAX_PLAYERS, MAX_QUEUE, createWorldServer } from './world-server';
 import type { WorldServer, WorldServerOptions } from './world-server';
 
 /** Polls until `predicate` is true. Fails after `timeoutMs`. Never sleeps blindly. */
@@ -358,6 +358,45 @@ describe('world server', () => {
     await d.flush();
     expect(c.messages.map((m) => m.type)).toEqual(['queue']);
     expect(d.messages.map((m) => m.type)).toEqual(['queue']);
+  });
+
+  it('lets 100 wait by default', () => {
+    expect(MAX_QUEUE).toBe(100);
+  });
+
+  it('tells a connection that arrives to a full queue so and closes it with 1013, leaving the queue alone', async () => {
+    await start({ maxPlayers: 1, maxQueue: 2 });
+    const a = await connectAndWelcome();
+    const b = await connect();
+    const c = await connect();
+    expect(await b.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+    expect(await c.nextMessage('queue')).toEqual({ type: 'queue', position: 2 });
+
+    const d = await connect();
+    let closeOfD: { code: number; reason: string } | undefined;
+    d.ws.on('close', (code, reason) => {
+      closeOfD = { code, reason: reason.toString() };
+    });
+    await d.nextMessage('full');
+    await d.closed();
+    expect(closeOfD).toEqual({ code: 1013, reason: 'Server full' });
+    expect(d.messages).toEqual([{ type: 'full' }]);
+
+    // B and C were told nothing new, and keep their places.
+    await b.flush();
+    await c.flush();
+    expect(b.messages.map((m) => m.type)).toEqual(['queue']);
+    expect(c.messages.map((m) => m.type)).toEqual(['queue']);
+
+    // D's close changed nothing: A leaves, B plays and C moves up to 1. D never got an id.
+    a.client.ws.close();
+    expect(await c.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+    for (let i = 0; i < 50 && !b.messages.some((m) => m.type === 'welcome'); i++) {
+      clock.advance(TICK_MS);
+      await b.flush();
+    }
+    expect((await b.nextMessage('welcome')).you).toBe(2);
+    expect(c.messages.map((m) => m.type)).toEqual(['queue', 'queue']);
   });
 
   it('admits the first in the queue when a player closes, and moves everyone behind up', async () => {

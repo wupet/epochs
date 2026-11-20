@@ -39,6 +39,8 @@ async function main(): Promise<void> {
         world.applyWelcome(message, now);
       } else if (message.type === 'queue') {
         world.applyQueue(message);
+      } else if (message.type === 'full') {
+        world.applyFull();
       } else if (message.type === 'tick' && world.applyTick(message, now)) {
         renderer.noteTick(now);
         timing.record(now);

@@ -270,7 +270,8 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
     }
 
     let text: string;
-    if (!connected) text = 'disconnected';
+    if (world.serverFull) text = 'The server and its queue are full. Try again later.';
+    else if (!connected) text = 'disconnected';
     else if (grid === null && world.queuePosition !== null) text = `In queue: position ${world.queuePosition}`;
     else text = `connected · tick ${Math.max(world.tick, 0)} · ${requestedMode} ${HINT}`;
     if (statusLine.textContent !== text) statusLine.textContent = text;

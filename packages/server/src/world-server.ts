@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import {
   TICK_MS,
   createWorld,
+  fullMessage,
   gridFromRows,
   parseClientMessage,
   queueMessage,
@@ -22,12 +23,17 @@ export interface WorldServerOptions {
   readonly spawn?: Tile;
   /** How many may play at once; later connections wait in a queue. Default `MAX_PLAYERS`. */
   readonly maxPlayers?: number;
+  /** How many may wait in the queue; a connection beyond that is told the server is full and closed. Default `MAX_QUEUE`. */
+  readonly maxQueue?: number;
   /** The tick function. The shared `step` by default; tests pass one that throws or adds characters. */
   readonly step?: typeof step;
 }
 
 /** How many players may be in the world at once. */
 export const MAX_PLAYERS = 100;
+
+/** How many connections may wait for a place at once. */
+export const MAX_QUEUE = 100;
 
 export interface WorldServer {
   /** Starts listening and ticking. Resolves with the port actually bound (pass 0 for any free port). */
@@ -63,6 +69,7 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   let latestModes = new Map<CharacterId, DebugMovementMode>();
   let nextId: CharacterId = 1;
   const maxPlayers = options.maxPlayers ?? MAX_PLAYERS;
+  const maxQueue = options.maxQueue ?? MAX_QUEUE;
   const stepWorld = options.step ?? step;
   /** How many ticks in a row `step` has thrown. A tick that fails twice has its intentions dropped. */
   let failedTicks = 0;
@@ -105,6 +112,13 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   wss.on('connection', (socket) => {
     if (connections.size < maxPlayers) {
       admit(socket);
+    } else if (waiting.length >= maxQueue) {
+      // No place and no room to wait: say so and hang up. It never gets an id or a queue position, so its
+      // close finds nothing to clean up.
+      send(socket, JSON.stringify(fullMessage()));
+      socket.on('error', () => {});
+      socket.close(1013, 'Server full');
+      return;
     } else {
       waiting.push(socket);
       sendQueuePositions(waiting.length - 1);

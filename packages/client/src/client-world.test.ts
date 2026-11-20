@@ -185,6 +185,13 @@ describe('ClientWorld speeds, via and queue', () => {
     world.applyWelcome(welcome, 0);
     expect(world.queuePosition).toBeNull();
   });
+
+  it('notes that the server is full', () => {
+    const world = new ClientWorld();
+    expect(world.serverFull).toBe(false);
+    world.applyFull();
+    expect(world.serverFull).toBe(true);
+  });
 });
 
 describe('parseServerMessage', () => {
@@ -200,6 +207,10 @@ describe('parseServerMessage', () => {
   it('accepts a queue message', () => {
     const q: QueueMessage = { type: 'queue', position: 2 };
     expect(parseServerMessage(JSON.stringify(q))).toEqual(q);
+  });
+
+  it('accepts a full message', () => {
+    expect(parseServerMessage('{"type":"full"}')).toEqual({ type: 'full' });
   });
 
   it('accepts a welcome or a tick', () => {

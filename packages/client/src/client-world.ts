@@ -24,6 +24,7 @@ export class ClientWorld {
   /** Each character's latest speed, in millitiles per tick. */
   private readonly speeds = new Map<CharacterId, number>();
   private _queuePosition: number | null = null;
+  private _serverFull = false;
 
   get you(): CharacterId | null {
     return this._you;
@@ -40,6 +41,11 @@ export class ClientWorld {
   /** Your place in the queue while waiting to join, or null when not queued (or once welcomed). */
   get queuePosition(): number | null {
     return this._queuePosition;
+  }
+
+  /** True once the server has said that it and its queue are full. It stays true after the socket closes. */
+  get serverFull(): boolean {
+    return this._serverFull;
   }
 
   /** Replace everything with what the welcome says. Everyone is still at their tile. */
@@ -59,6 +65,11 @@ export class ClientWorld {
   /** Note your place in the join queue. */
   applyQueue(msg: QueueMessage): void {
     this._queuePosition = msg.position;
+  }
+
+  /** Note that the server turned this connection away because it and its queue are full. */
+  applyFull(): void {
+    this._serverFull = true;
   }
 
   /**
@@ -114,7 +125,7 @@ export class ClientWorld {
   }
 }
 
-/** A light check of a raw server message: a JSON object whose type is 'welcome', 'tick' or 'queue'. */
+/** A light check of a raw server message: a JSON object whose type is 'welcome', 'tick', 'queue' or 'full'. */
 export function parseServerMessage(raw: string): ServerMessage | null {
   let value: unknown;
   try {
@@ -124,6 +135,6 @@ export function parseServerMessage(raw: string): ServerMessage | null {
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const type = (value as { type?: unknown }).type;
-  if (type !== 'welcome' && type !== 'tick' && type !== 'queue') return null;
+  if (type !== 'welcome' && type !== 'tick' && type !== 'queue' && type !== 'full') return null;
   return value as ServerMessage;
 }
