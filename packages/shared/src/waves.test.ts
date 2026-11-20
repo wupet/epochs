@@ -1,10 +1,5 @@
-// These tests read the real `content/` folder with Node's file system (tests are type-checked with Node types).
-import { readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  buildContentBundle,
   clearEnemies,
   createArenaWorld,
   createWorld,
@@ -16,22 +11,8 @@ import {
   startWave,
   step,
 } from './index';
-import type { ContentBundle, Enemy, Tile, WorldState } from './index';
-
-const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-
-/** The real content bundle, built from the files under `content/`. */
-function realContent(): ContentBundle {
-  const files = readdirSync(`${repoRoot}content`, { recursive: true, withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.json'))
-    .map((e) => ({
-      path: `content/${basename(e.parentPath)}/${e.name}`,
-      text: readFileSync(join(e.parentPath, e.name), 'utf8'),
-    }));
-  const { bundle } = buildContentBundle(files);
-  if (!bundle) throw new Error('The real content does not load.');
-  return bundle;
-}
+import type { Enemy, Tile, WorldState } from './index';
+import { realContent } from './test-support/real-content';
 
 const content = realContent();
 

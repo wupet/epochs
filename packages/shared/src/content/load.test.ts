@@ -1,24 +1,11 @@
-// These tests read the real `content/` folder with Node's file system. That is fine here: shared tests are
-// type-checked with Node types (tsconfig.test.json); only the shared sources themselves are pure.
-import { readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+// The Zod-free check reads source files with Node's file system (tests are type-checked with Node types).
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_CONTENT, lookup } from './bundle';
 import type { ContentFile } from './check';
 import { buildContentBundle } from './load';
-
-const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
-
-/** The real files under `content/`, as the checker sees them (paths relative to the repo, forward slashes). */
-function realFiles(): ContentFile[] {
-  return readdirSync(`${repoRoot}content`, { recursive: true, withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.json'))
-    .map((e) => ({
-      path: `content/${basename(e.parentPath)}/${e.name}`,
-      text: readFileSync(join(e.parentPath, e.name), 'utf8'),
-    }));
-}
+import { realContentFiles as realFiles } from '../test-support/real-content';
 
 const withText = (files: ContentFile[], path: string, text: string): ContentFile[] =>
   files.map((f) => (f.path === path ? { path, text } : f));

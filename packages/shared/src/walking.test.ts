@@ -1,12 +1,7 @@
-// The arena test reads the real `content/` folder with Node's file system (tests are type-checked with Node types).
-import { readFileSync, readdirSync } from 'node:fs';
-import { basename, join as joinPath } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_SPEED,
   STEP,
-  buildContentBundle,
   createArenaWorld,
   createWorld,
   gridFromRows,
@@ -16,22 +11,8 @@ import {
   walk,
   withBlockers,
 } from './index';
-import type { ContentBundle, Enemy, Intention, Tile, Walker, WorldState } from './index';
-
-const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-
-/** The real content bundle, built from the files under `content/`. */
-function realContent(): ContentBundle {
-  const files = readdirSync(`${repoRoot}content`, { recursive: true, withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith('.json'))
-    .map((e) => ({
-      path: `content/${basename(e.parentPath)}/${e.name}`,
-      text: readFileSync(joinPath(e.parentPath, e.name), 'utf8'),
-    }));
-  const { bundle } = buildContentBundle(files);
-  if (!bundle) throw new Error('The real content does not load.');
-  return bundle;
-}
+import type { Enemy, Intention, Tile, Walker, WorldState } from './index';
+import { realContent } from './test-support/real-content';
 
 function t(x: number, y: number): Tile {
   return { x, y };
@@ -230,6 +211,20 @@ describe('step: enemies block movement', () => {
     expect(world.enemies[0]!.tile).toEqual(t(3, 0));
     world = step(world, [move(1, t(0, 0))]); // the player leaves (2,0) for (1,0); the enemy steps into (2,0) behind it
     expect(world.enemies[0]!.tile).toEqual(t(2, 0));
+    expectNoSharing(world);
+  });
+
+  it('enemies move in id order: enemy 2 may step into the tile enemy 1 left this tick, but not the reverse', () => {
+    const grid = gridFromRows(['......']);
+    const base = createWorld(grid, t(5, 0));
+    // A chain moving left: 1 at (1,0) to (0,0), 2 at (2,0) into (1,0).
+    let world: WorldState = { ...base, enemies: [enemyOn(1, t(1, 0), [t(0, 0)]), enemyOn(2, t(2, 0), [t(1, 0)])] };
+    world = step(world, []);
+    expect(world.enemies.map((e) => e.tile)).toEqual([t(0, 0), t(1, 0)]);
+    // A chain moving right: 1 at (3,0) into (4,0) is refused, because 2 is still there when 1 moves.
+    world = { ...base, enemies: [enemyOn(1, t(3, 0), [t(4, 0)]), enemyOn(2, t(4, 0), [t(5, 0)])] };
+    world = step(world, []);
+    expect(world.enemies.map((e) => e.tile)).toEqual([t(3, 0), t(5, 0)]);
     expectNoSharing(world);
   });
 

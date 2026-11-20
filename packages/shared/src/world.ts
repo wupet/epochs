@@ -284,21 +284,22 @@ function applyJoinsAndLeaves(state: WorldState, sorted: readonly Intention[]): W
   return next;
 }
 
-const DEBUG_INTENTION_KINDS: readonly string[] = [
-  'debug-preset',
-  'debug-level',
-  'debug-move-point',
-  'debug-weapon',
-  'debug-armor',
-  'debug-class-rank',
-  'debug-heal',
-  'debug-start-wave',
-  'debug-clear-enemies',
-] satisfies readonly DebugIntention['kind'][];
+/** Every debug kind, exactly once: a `Record` over the union, so the compiler catches a missing or extra one. */
+const DEBUG_INTENTION_KINDS: Readonly<Record<DebugIntention['kind'], true>> = {
+  'debug-preset': true,
+  'debug-level': true,
+  'debug-move-point': true,
+  'debug-weapon': true,
+  'debug-armor': true,
+  'debug-class-rank': true,
+  'debug-heal': true,
+  'debug-start-wave': true,
+  'debug-clear-enemies': true,
+};
 
 /** True only for the nine debug kinds; anything else (an unknown `debug-…` name, a non-string) is not one. */
 function isDebugIntention(intention: Intention): intention is DebugIntention {
-  return DEBUG_INTENTION_KINDS.includes(intention.kind);
+  return typeof intention.kind === 'string' && Object.hasOwn(DEBUG_INTENTION_KINDS, intention.kind);
 }
 
 /** 3. Debug intentions, one after another. One from a character not in the world does nothing. */
