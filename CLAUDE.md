@@ -4,7 +4,7 @@ A free, web-based, computer-only fantasy RPG. Up to 100 players share one huge, 
 
 ## Where things are
 
-- `docs/phase-0-brief.md`: **the current task.** Start here.
+- `docs/phase-2-brief.md`: **the current task.** Start here. (`docs/phase-0-brief.md` is the finished Phase 0.)
 - `docs/design-summary.md`: the game in brief, and every design decision that affects code.
 - `docs/technical-plan.md`: architecture, clocks, networking, storage, testing.
 - `docs/implementation-plan.md`: all phases, milestones, and the scope of each prototype.
@@ -13,7 +13,7 @@ The full design lives in Peter's design doc on claude.ai. These files are summar
 
 ## Current phase
 
-Phase 0: Foundations. See `docs/phase-0-brief.md`.
+Phase 2: Combat prototype. See `docs/phase-2-brief.md`. Phase 0 (Foundations) is complete; Phase 1, the paper design, happened in the design doc and produced the Phase 2 brief.
 
 ## Stack
 

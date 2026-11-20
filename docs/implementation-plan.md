@@ -40,11 +40,13 @@ Write down just enough to build the scope below: the 12 classes in full, enemy g
 
 | Milestone | What gets built | Done when |
 | --- | --- | --- |
-| 2.1 Movement | Attack-move, the tick pulse, polished click-to-move | Moving around feels responsive |
-| 2.2 Abilities | Ability slots, channel times, shapes, telegraphs | A fight can be read from its telegraphs |
-| 2.3 Enemies | Slimes that merge, goblins with a leader | Each family follows its growth rule in the arena |
-| 2.4 Wounds and items | Health, conditions, wounds, scrambled potions | Mistakes have lasting consequences |
-| 2.5 A puzzle boss | The Clockwork Colossus | Players can work out the trick |
+| 2.1 Fighting basics | The arena, health, levels, attributes, the damage formula, weapons and armor, attack-move, death and recap, a debug panel | You can fight a training dummy and a slime, die, and read why |
+| 2.2 Abilities and classes | The action model, ability shapes, telegraphs, five slots, the campfire loadout, mana, the three classes | Each class plays, two combine, every telegraph is readable |
+| 2.3 Conditions, wounds, and items | Wet, Burning, Chilled, Stunned; bleeding, poison, fracture; bandages and shuffled potions | Douse then Chill freezes; wounds follow their thresholds |
+| 2.4 Enemies | Slimes that merge, goblins that learn, simple AI, waves 1 to 4, experience | Slimes merge, goblins flee and learn |
+| 2.5 A puzzle boss | The Clockwork Colossus, the plaque, wave 5 | It falls to both straight fighting and the jam loop |
+
+The milestones follow `docs/phase-2-brief.md`, which replaced the earlier outline.
 
 **Gate:** a tick-based fight feels fluid and fair.
 

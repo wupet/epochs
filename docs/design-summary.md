@@ -38,7 +38,8 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - The nearest-tile search covers 16 tiles around the click, about one screen. If nothing reachable is in range, the character stays put. *(Peter, 2026-11-19.)*
 - Among equally short paths, the one closest to the straight line from start to end wins. *(Peter, 2026-11-19.)*
 - A full server (100 players) puts the next player in a queue that shows their position. *(Peter, 2026-11-19.)*
-- Players pass through each other and can share tiles. Enemy collision is decided in Phase 2. *(Peter, 2026-11-19.)*
+- Players pass through each other and can share tiles. *(Peter, 2026-11-19.)*
+- Enemies block movement. *(Peter, 2026-11-19, for Phase 2.)*
 - Attack-move, like League of Legends, comes later.
 - Movement speed is a stat: faster characters act on earlier subticks.
 
@@ -55,6 +56,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - **Up to 5 ability slots** and 1 or 2 item slots, rearranged only at rest stops.
 - **Wounds** last: bleeding, poison, fractures, lost limbs, curses, and more.
 - **No stamina.** Casters use mana; fighters use no resource.
+- **Enemy targeting:** an enemy targets whoever damaged it most recently, otherwise the nearest player. *(Peter, 2026-11-19, for Phase 2.)*
 
 ## Characters
 

@@ -238,10 +238,13 @@ Each enemy gives experience scaled by its tier relative to the player's level: e
 
 Holy damage, every other condition and wound, other classes, gear quality, crafting, the world, other players beyond debug tabs, real art, final death, and the Renewal.
 
+### Collision and targeting
+
+- **Enemies block movement.** Players still pass through each other and can share tiles. *(Peter, 2026-11-19.)*
+- **Enemies target whoever damaged them most recently,** otherwise the nearest player. *(Peter, 2026-11-19.)*
+
 ## When to ask Peter
 
 Ask before inventing any rule that isn't here. Likely questions:
 
-- Whether enemies block movement, or players can pass through them.
-- How enemies choose between several targets.
 - Anything that changes the feel of combat beyond the numbers above.
