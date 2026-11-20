@@ -17,6 +17,9 @@ export const ITEM_KINDS = ['plain', 'trait', 'storied', 'holy-relic', 'cursed', 
 export const ITEM_QUALITIES = ['crude', 'common', 'fine', 'superior', 'masterwork', 'legendary', 'mythic'] as const;
 export const INTELLIGENCES = ['mindless', 'instinctive', 'cunning', 'organized', 'ancient'] as const;
 
+/** Birth points every preset spends (design summary: "exactly 4 in total"). The one source for this number. */
+export const BIRTH_POINTS = 4;
+
 /** Lowercase letters, digits and hyphens, starting with a letter. */
 export const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 

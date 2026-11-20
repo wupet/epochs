@@ -3,7 +3,7 @@
  * field and what is wrong. Pure: it takes file contents as input and never touches the file system.
  */
 import { z } from 'zod';
-import { CONTENT_KINDS, ID_PATTERN, TIER_CAPACITY_COST } from './schemas';
+import { BIRTH_POINTS, CONTENT_KINDS, ID_PATTERN, TIER_CAPACITY_COST } from './schemas';
 import type {
   AbilityContent,
   ArenaContent,
@@ -34,9 +34,6 @@ export const MAX_ITEM_DAMAGE_KINDS = 2;
 
 /** Resistance multipliers outside this range (inclusive) get a warning. */
 export const USUAL_MULTIPLIER_RANGE = { min: 0.25, max: 3 } as const;
-
-/** A preset's birth points add up to this (design summary: "exactly 4 in total"). Matches `BIRTH_POINTS` in the character rules. */
-const PRESET_BIRTH_POINTS_TOTAL = 4;
 
 /** The tile characters of an arena's `rows`. */
 const WALL = '#';
@@ -245,9 +242,9 @@ function rulesWithinFile(entry: Entry): Found[] {
           (i) => `birthPoints[${i}].attribute`,
           (k) => `repeated attribute "${k}"`,
         ),
-        ...(total === PRESET_BIRTH_POINTS_TOTAL
+        ...(total === BIRTH_POINTS
           ? []
-          : [{ field: 'birthPoints', message: `must total ${PRESET_BIRTH_POINTS_TOTAL}, found ${total}` }]),
+          : [{ field: 'birthPoints', message: `must total ${BIRTH_POINTS}, found ${total}` }]),
       ];
     }
     case 'arenas':

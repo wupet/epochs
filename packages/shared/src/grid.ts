@@ -94,3 +94,12 @@ export function canStep(grid: Grid, from: Tile, to: Tile): boolean {
   }
   return true;
 }
+
+/** A new grid with the given tiles also blocked. Tiles outside the grid are ignored; the original is left unchanged. */
+export function withBlockers(grid: Grid, tiles: readonly Tile[]): Grid {
+  const blocked = grid.blocked.slice();
+  for (const tile of tiles) {
+    if (inBounds(grid, tile)) blocked[tile.y * grid.width + tile.x] = true;
+  }
+  return { width: grid.width, height: grid.height, blocked };
+}

@@ -6,3 +6,7 @@ export * from './movement';
 export * from './world';
 export * from './protocol';
 export * from './content';
+export * from './rng';
+export * from './damage';
+export * from './character';
+export * from './reach';

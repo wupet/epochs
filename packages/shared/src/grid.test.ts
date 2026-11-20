@@ -7,6 +7,7 @@ import {
   inBounds,
   isWalkable,
   sameTile,
+  withBlockers,
 } from './index';
 
 describe('gridFromRows and gridToRows', () => {
@@ -126,5 +127,29 @@ describe('canStep', () => {
         }
       }
     }
+  });
+});
+
+describe('withBlockers', () => {
+  it('returns a new grid with those tiles blocked and leaves the original unchanged', () => {
+    const grid = gridFromRows(['...', '...']);
+    const blocked = withBlockers(grid, [
+      { x: 1, y: 0 },
+      { x: 2, y: 1 },
+    ]);
+    expect(gridToRows(blocked)).toEqual(['.#.', '..#']);
+    expect(gridToRows(grid)).toEqual(['...', '...']);
+    expect(blocked).not.toBe(grid);
+  });
+
+  it('ignores out-of-bounds tiles', () => {
+    const grid = gridFromRows(['..', '..']);
+    const blocked = withBlockers(grid, [
+      { x: -1, y: 0 },
+      { x: 2, y: 0 },
+      { x: 0, y: 5 },
+      { x: 1, y: 1 },
+    ]);
+    expect(gridToRows(blocked)).toEqual(['..', '.#']);
   });
 });
