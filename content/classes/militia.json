@@ -1,0 +1,11 @@
+{
+  "id": "militia",
+  "name": "Militia",
+  "tier": "beginner",
+  "capacityCost": 1,
+  "prerequisites": [],
+  "unlockCondition": "Hold a gate until a raid ends.",
+  "signaturePassive": { "id": "hold-the-line", "description": "Placeholder: takes less damage while standing still." },
+  "startingAbilities": ["basic-strike"],
+  "capstone": "Placeholder: allies next to you take less damage."
+}

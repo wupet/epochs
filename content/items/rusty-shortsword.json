@@ -1,0 +1,11 @@
+{
+  "id": "rusty-shortsword",
+  "name": "Rusty Shortsword",
+  "kind": "plain",
+  "quality": "crude",
+  "damageSplit": [
+    { "kind": "force", "amount": 8 },
+    { "kind": "precision", "amount": 2 }
+  ],
+  "requirements": [{ "attribute": "might", "minimum": 3 }]
+}

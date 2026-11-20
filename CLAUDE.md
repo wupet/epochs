@@ -68,6 +68,6 @@ Requires Node 22 or later. Run `npm ci` once after cloning (installs exactly wha
 - `npm test`: run all tests once (Vitest, one project per package). `npm run test:watch` to keep watching.
 - `npm run typecheck`: type-check every package.
 - `npm run check-links`: re-point workspace links in `node_modules` at this repo (Windows junctions are absolute, so they break when the repo moves). Runs automatically before `dev`, `test` and `typecheck`.
-- `npm run check-content`: validate everything in `content/`. *(Not yet built; comes in milestone 0.3.)*
+- `npm run check-content`: validate everything in `content/` and report each problem as file, field and message.
 
 `packages/shared` is type-checked with no Node or DOM types, so `process`, `setTimeout`, `window`, `fs` and the like fail to compile there. That's deliberate (rule 2). Its tests are checked separately with Node types.

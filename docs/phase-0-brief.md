@@ -101,7 +101,7 @@ Follow-ups to 0.2, decided by Peter after playing it (2026-11-19). The design is
 
 **Field outlines:**
 
-- **Class:** id, name, tier (beginner, intermediate, advanced, expert), capacity cost (1, 2, 3, 5), prerequisites (list of class id and rank), unlock condition (a short description for now), signature passive (id and description), starting abilities (list of ability ids).
+- **Class:** id, name, tier (beginner, intermediate, advanced, expert), capacity cost (1, 2, 3, 5), prerequisites (list of class id and rank), unlock condition (a short description for now), signature passive (id and description), starting abilities (list of ability ids), capstone (a short description of the class's bonus at full mastery) *(Peter, 2026-11-19)*.
 - **Ability:** id, name, channel time in ticks, shape (single tile, line, cone, burst, wall, touch, self), range in tiles, damage (list of damage kind and amount), conditions applied (list, may be empty).
 - **Item:** id, name, kind (plain, trait, storied, holy relic, cursed, consumable, tool), quality (crude, common, fine, superior, masterwork, legendary, mythic), damage split (list of damage kind and amount, for weapons), requirements (list of attribute and minimum).
 - **Enemy:** id, name, family, tier, health, damage (list of damage kind and amount), resistances (list of damage kind and multiplier), intelligence (mindless, instinctive, cunning, organized, ancient).

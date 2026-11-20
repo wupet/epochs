@@ -1,0 +1,9 @@
+{
+  "id": "basic-strike",
+  "name": "Basic Strike",
+  "channelTicks": 1,
+  "shape": "single-tile",
+  "rangeTiles": 1,
+  "damage": [{ "kind": "force", "amount": 10 }],
+  "conditionsApplied": []
+}

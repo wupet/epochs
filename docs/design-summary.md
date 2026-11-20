@@ -61,6 +61,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - **Level 1 to 50,** from experience scaled by danger and difficulty. Each level gives one attribute point, placed immediately, and a small rise in most stats.
 - **Five attributes:** Might, Finesse, Vigor, Wits, Spirit. Each boosts its damage kind (Vigor has none) and does things beyond damage. Points cost more past 20 and 30.
 - **Classes** in four tiers (capacity cost 1, 2, 3, 5), equipped within class capacity that grows with level. Swapped at rest stops.
+- Each class has a capstone: a bonus at full mastery. *(Peter, 2026-11-19.)*
 - **Gear** has a damage split, quality, and low attribute requirements.
 
 ## Content is data

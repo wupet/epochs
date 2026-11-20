@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "check-content": "node --import tsx packages/tools/src/check-content.ts",
     "check-links": "node --import tsx packages/tools/src/check-links.ts",
     "predev": "node --import tsx packages/tools/src/check-links.ts",
     "pretest": "node --import tsx packages/tools/src/check-links.ts",

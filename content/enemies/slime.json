@@ -1,0 +1,10 @@
+{
+  "id": "slime",
+  "name": "Slime",
+  "family": "slime",
+  "tier": 1,
+  "health": 20,
+  "damage": [{ "kind": "force", "amount": 3 }],
+  "resistances": [{ "kind": "precision", "multiplier": 0.5 }],
+  "intelligence": "mindless"
+}
