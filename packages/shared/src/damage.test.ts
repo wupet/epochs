@@ -100,9 +100,41 @@ describe('computeDamage', () => {
   });
 
   it('applies the spread as its own factor after the added bonuses', () => {
-    // F10, Might 10, level 1: 10 * 1.40 = 14.0; spread +10 -> 15.4 -> 15; spread -10 -> 12.6 -> 13.
-    const base = { damage: [{ kind: 'force', amount: 10 }] as const, attacker: { attributes: attrs(10), level: 1 } };
-    expect(hit({ ...base, spreadPercent: 10 })).toBe(15);
-    expect(hit({ ...base, spreadPercent: -10 })).toBe(13);
+    // F10, Might 25, level 1: bonus factor 2.00. Multiplicative spread: 10 * 2.00 * 1.10 = 22, * 0.90 = 18.
+    // An additive spread would give (200 + 10)% = 21 and (200 - 10)% = 19, so these pin the rule.
+    const base = { damage: [{ kind: 'force', amount: 10 }] as const, attacker: { attributes: attrs(25), level: 1 } };
+    expect(hit({ ...base, spreadPercent: 10 })).toBe(22);
+    expect(hit({ ...base, spreadPercent: -10 })).toBe(18);
+  });
+
+  it('takes armor once from the summed kinds, not per kind', () => {
+    // F4 + P4 = 8, armor 3 -> 5. Per kind it would be max(4 - 3, 10% of 4) twice = 2.
+    expect(
+      hit({
+        damage: [
+          { kind: 'force', amount: 4 },
+          { kind: 'precision', amount: 4 },
+        ],
+        attacker: null,
+        armor: 3,
+      }),
+    ).toBe(5);
+  });
+
+  it('rounds once on the sum, not per kind', () => {
+    // F1 + P1, both resisted to 0.5: 0.5 + 0.5 = 1.0 -> 1. Rounding each half up first would give 2.
+    expect(
+      hit({
+        damage: [
+          { kind: 'force', amount: 1 },
+          { kind: 'precision', amount: 1 },
+        ],
+        attacker: null,
+        resistances: [
+          { kind: 'force', multiplier: 0.5 },
+          { kind: 'precision', multiplier: 0.5 },
+        ],
+      }),
+    ).toBe(1);
   });
 });

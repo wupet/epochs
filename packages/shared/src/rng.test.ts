@@ -20,6 +20,14 @@ describe('nextRandom', () => {
     }
   });
 
+  it('matches golden vectors from the reference mulberry32 (seeds 1 and 12345)', () => {
+    const a = nextRandom(1);
+    const b = nextRandom(a.state);
+    const c = nextRandom(b.state);
+    expect([a.value, b.value, c.value]).toEqual([2693262067, 11749833, 2265367787]);
+    expect(nextRandom(12345).value).toBe(4207900869);
+  });
+
   it('is mulberry32: the state advances by 0x6d2b79f5 each call', () => {
     expect(nextRandom(0).state).toBe(0x6d2b79f5);
     expect(nextRandom(0x6d2b79f5).state).toBe((0x6d2b79f5 * 2) >>> 0);
