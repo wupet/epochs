@@ -42,7 +42,8 @@ function warningRepo(...multipliers: number[]): string {
       family: 'odd',
       tier: 1,
       health: 5,
-      damage: [{ kind: 'force', amount: 1 }],
+      speed: 500,
+      attacks: [],
       resistances: [{ kind: 'precision', multiplier }],
       intelligence: 'mindless',
     };
@@ -85,10 +86,10 @@ describe('checkReport wording', () => {
 });
 
 describe('runCheck', () => {
-  it('finds the real content valid, all four sample files', () => {
+  it('finds the real content valid, all 15 files', () => {
     const result = runCheck(realRepo);
     expect(result.problems).toEqual([]);
-    expect(result.fileCount).toBe(4);
+    expect(result.fileCount).toBe(15);
   });
 
   it('names the broken file and field', () => {
@@ -100,9 +101,9 @@ describe('runCheck', () => {
 });
 
 describe('the check-content command', () => {
-  it('exits 0 and says all four files are valid, from any working directory', () => {
+  it('exits 0 and says all 15 files are valid, from any working directory', () => {
     const result = runCli();
-    expect(result.stdout).toContain('All 4 content files are valid.');
+    expect(result.stdout).toContain('All 15 content files are valid.');
     expect(result.status).toBe(0);
   });
 
@@ -119,13 +120,13 @@ describe('the check-content command', () => {
     expect(result.stdout).toContain(
       'content/enemies/odd-0.json: resistances[0].multiplier: warning: 4 is outside the usual range 0.25–3',
     );
-    expect(result.stdout).toContain('All 5 content files are valid, with 1 warning.');
+    expect(result.stdout).toContain('All 16 content files are valid, with 1 warning.');
     expect(result.status).toBe(0);
   });
 
   it('uses the plural for several warnings', () => {
     const result = runCli({ EPOCHS_REPO_ROOT: warningRepo(4, 0.1) });
-    expect(result.stdout).toContain('All 6 content files are valid, with 2 warnings.');
+    expect(result.stdout).toContain('All 17 content files are valid, with 2 warnings.');
     expect(result.status).toBe(0);
   });
 
@@ -163,7 +164,7 @@ describe('the check-content command', () => {
     }
     try {
       const result = runCli({}, join(link, 'check-content.ts'));
-      expect(result.stdout).toContain('All 4 content files are valid.');
+      expect(result.stdout).toContain('All 15 content files are valid.');
       expect(result.status).toBe(0);
     } finally {
       // Removes only the link itself, never what it points to.

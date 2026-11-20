@@ -1,0 +1,10 @@
+{
+  "id": "wave-1",
+  "name": "Wave 1",
+  "arena": "arena",
+  "enemies": [
+    { "enemy": "slime", "x": 6, "y": 3 },
+    { "enemy": "slime", "x": 12, "y": 3 },
+    { "enemy": "slime", "x": 18, "y": 3 }
+  ]
+}

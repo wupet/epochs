@@ -1,0 +1,12 @@
+{
+  "id": "training-dummy",
+  "name": "Training Dummy",
+  "family": "construct",
+  "tier": 1,
+  "health": 1000,
+  "speed": 0,
+  "attacks": [],
+  "healsAfterTicks": 20,
+  "resistances": [],
+  "intelligence": "mindless"
+}

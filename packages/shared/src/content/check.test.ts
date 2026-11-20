@@ -32,6 +32,16 @@ const rustyShortsword = {
     { kind: 'precision', amount: 1 },
   ],
   requirements: [{ attribute: 'might', minimum: 1 }],
+  weapon: { attackIntervalTicks: 4, rangeTiles: 1 },
+};
+const leatherJerkin = {
+  id: 'leather-jerkin',
+  name: 'Leather Jerkin',
+  kind: 'plain',
+  quality: 'crude',
+  damageSplit: [],
+  requirements: [],
+  armor: { armor: 1, resistances: [] },
 };
 const slime = {
   id: 'slime',
@@ -39,9 +49,39 @@ const slime = {
   family: 'slime',
   tier: 1,
   health: 10,
-  damage: [{ kind: 'force', amount: 1 }],
+  speed: 500,
+  attacks: [{ id: 'touch', name: 'Touch', windupTicks: 1, cooldownTicks: 3, damage: [{ kind: 'force', amount: 1 }] }],
   resistances: [{ kind: 'precision', multiplier: 0.5 }],
   intelligence: 'mindless',
+};
+const militiaPreset = {
+  id: 'militia',
+  name: 'Militia',
+  mainAttribute: 'might',
+  birthPoints: [
+    { attribute: 'might', points: 3 },
+    { attribute: 'vigor', points: 1 },
+  ],
+  weapon: 'rusty-shortsword',
+  armor: 'leather-jerkin',
+};
+// A 5 by 5 room with a pillar; the campfire is at (2, 3) and the spawn tile at (1, 3).
+const arena = {
+  id: 'arena',
+  name: 'Arena',
+  rows: ['#####', '#...#', '#.#.#', '#...#', '#####'],
+  campfire: { x: 2, y: 3 },
+  spawn: { x: 1, y: 3 },
+  startingPreset: 'militia',
+};
+const wave = {
+  id: 'wave-1',
+  name: 'Wave 1',
+  arena: 'arena',
+  enemies: [
+    { enemy: 'slime', x: 1, y: 1 },
+    { enemy: 'slime', x: 3, y: 1 },
+  ],
 };
 
 const file = (path: string, value: unknown): ContentFile => ({ path, text: JSON.stringify(value) });
@@ -50,11 +90,15 @@ const samples = (): ContentFile[] => [
   file('content/abilities/basic-strike.json', basicStrike),
   file('content/items/rusty-shortsword.json', rustyShortsword),
   file('content/enemies/slime.json', slime),
+  file('content/items/leather-jerkin.json', leatherJerkin),
+  file('content/presets/militia.json', militiaPreset),
+  file('content/arenas/arena.json', arena),
+  file('content/waves/wave-1.json', wave),
 ];
 const strikeFile = file('content/abilities/basic-strike.json', basicStrike);
 
 describe('checkContent', () => {
-  it('accepts a fully valid set of four files', () => {
+  it('accepts a fully valid set, one or more of every kind', () => {
     expect(checkContent(samples())).toEqual([]);
   });
 
@@ -113,11 +157,11 @@ describe('checkContent', () => {
   it('reports each extra field on its own, with the path to the key', () => {
     const bad = file('content/enemies/slime.json', {
       ...slime,
-      damage: [{ kind: 'force', amount: 1, colour: 'red', size: 2 }],
+      resistances: [{ kind: 'force', multiplier: 1, colour: 'red', size: 2 }],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'damage[0].colour', severity: 'error', message: 'unknown field' },
-      { file: 'content/enemies/slime.json', field: 'damage[0].size', severity: 'error', message: 'unknown field' },
+      { file: 'content/enemies/slime.json', field: 'resistances[0].colour', severity: 'error', message: 'unknown field' },
+      { file: 'content/enemies/slime.json', field: 'resistances[0].size', severity: 'error', message: 'unknown field' },
     ]);
   });
 
@@ -154,10 +198,10 @@ describe('checkContent', () => {
     ]);
   });
 
-  it('says a multiplier must be above 0', () => {
-    const bad = file('content/enemies/slime.json', { ...slime, resistances: [{ kind: 'force', multiplier: 0 }] });
+  it('says a multiplier must not be below 0', () => {
+    const bad = file('content/enemies/slime.json', { ...slime, resistances: [{ kind: 'force', multiplier: -0.5 }] });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', severity: 'error', message: 'must be greater than 0' },
+      { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', severity: 'error', message: 'must be at least 0' },
     ]);
   });
 
@@ -334,7 +378,7 @@ describe('checkContent', () => {
       {
         file: 'content/spells/fireball.json',
         field: '',
-        severity: 'error', message: 'unknown content folder "spells" (expected classes, abilities, items, enemies)',
+        severity: 'error', message: 'unknown content folder "spells" (expected classes, abilities, items, enemies, presets, arenas, waves)',
       },
     ]);
   });
@@ -433,6 +477,238 @@ describe('checkContent', () => {
   it('is not affected by input order', () => {
     const files = [...samples(), file('content/classes/knight.json', { ...militia, id: 'knight', startingAbilities: ['nope'] })];
     expect(checkContent([...files].reverse())).toEqual(checkContent(files));
+  });
+});
+
+const err = (path: string, field: string, message: string) => ({ file: path, field, severity: 'error' as const, message });
+
+describe('combat content rules', () => {
+  const slimePath = 'content/enemies/slime.json';
+  const swordPath = 'content/items/rusty-shortsword.json';
+  const jerkinPath = 'content/items/leather-jerkin.json';
+  const presetPath = 'content/presets/militia.json';
+  const arenaPath = 'content/arenas/arena.json';
+  const wavePath = 'content/waves/wave-1.json';
+  const touch = slime.attacks[0]!;
+
+  /**
+   * The problems in one file. A file that fails its shape check is left out of the cross-file checks, so
+   * files that refer to it get "no ... with id" errors too; tests about the shape look at their file only.
+   */
+  const own = (path: string, files: ContentFile[]) => checkContent(files).filter((p) => p.file === path);
+
+  /** The valid set with one file replaced by a changed version. */
+  const changed = (path: string, value: unknown): ContentFile[] =>
+    samples().map((f) => (f.path === path ? file(path, value) : f));
+
+  describe('resistances', () => {
+    it('warns about a 0 multiplier on an enemy, without an error', () => {
+      const odd = changed(slimePath, { ...slime, resistances: [{ kind: 'force', multiplier: 0 }] });
+      expect(checkContent(odd)).toEqual([
+        { file: slimePath, field: 'resistances[0].multiplier', severity: 'warning', message: '0 is outside the usual range 0.25–3' },
+      ]);
+    });
+
+    it('warns about a 0 multiplier and an odd one on armor, at armor.resistances', () => {
+      const odd = changed(jerkinPath, {
+        ...leatherJerkin,
+        armor: { armor: 1, resistances: [{ kind: 'force', multiplier: 0 }, { kind: 'holy', multiplier: 4 }] },
+      });
+      expect(checkContent(odd)).toEqual([
+        { file: jerkinPath, field: 'armor.resistances[0].multiplier', severity: 'warning', message: '0 is outside the usual range 0.25–3' },
+        { file: jerkinPath, field: 'armor.resistances[1].multiplier', severity: 'warning', message: '4 is outside the usual range 0.25–3' },
+      ]);
+    });
+
+    it('rejects a negative multiplier on armor', () => {
+      const bad = changed(jerkinPath, { ...leatherJerkin, armor: { armor: 1, resistances: [{ kind: 'force', multiplier: -0.5 }] } });
+      expect(own(jerkinPath, bad)).toEqual([err(jerkinPath, 'armor.resistances[0].multiplier', 'must be at least 0')]);
+    });
+
+    it('rejects a repeated armor resistance kind', () => {
+      const bad = changed(jerkinPath, {
+        ...leatherJerkin,
+        armor: { armor: 1, resistances: [{ kind: 'force', multiplier: 0.5 }, { kind: 'force', multiplier: 0.6 }] },
+      });
+      expect(checkContent(bad)).toEqual([err(jerkinPath, 'armor.resistances[1].kind', 'repeated damage kind "force"')]);
+    });
+  });
+
+  describe('enemies', () => {
+    it('rejects a repeated attack id', () => {
+      const bad = changed(slimePath, { ...slime, attacks: [touch, { ...touch, name: 'Again' }] });
+      expect(checkContent(bad)).toEqual([err(slimePath, 'attacks[1].id', 'repeated attack id "touch"')]);
+    });
+
+    it('rejects a repeated damage kind within an attack', () => {
+      const bad = changed(slimePath, {
+        ...slime,
+        attacks: [{ ...touch, damage: [{ kind: 'force', amount: 1 }, { kind: 'arcane', amount: 1 }, { kind: 'force', amount: 2 }] }],
+      });
+      expect(checkContent(bad)).toEqual([err(slimePath, 'attacks[0].damage[2].kind', 'repeated damage kind "force"')]);
+    });
+
+    it('accepts an enemy with no attacks and a healing delay', () => {
+      const dummy = { ...slime, attacks: [], speed: 0, healsAfterTicks: 20 };
+      expect(checkContent(changed(slimePath, dummy))).toEqual([]);
+    });
+
+    it('rejects a speed above 2000, a zero windup and a zero healing delay', () => {
+      const bad = changed(slimePath, { ...slime, speed: 2001, attacks: [{ ...touch, windupTicks: 0 }], healsAfterTicks: 0 });
+      expect(own(slimePath, bad)).toEqual([
+        err(slimePath, 'attacks[0].windupTicks', 'must be at least 1'),
+        err(slimePath, 'healsAfterTicks', 'must be at least 1'),
+        err(slimePath, 'speed', 'must be at most 2000'),
+      ]);
+    });
+
+    it('rejects the old damage field', () => {
+      const bad = changed(slimePath, { ...slime, damage: [{ kind: 'force', amount: 1 }] });
+      expect(own(slimePath, bad)).toEqual([err(slimePath, 'damage', 'unknown field')]);
+    });
+  });
+
+  describe('items', () => {
+    it('rejects a weapon with an empty damage split', () => {
+      const bad = changed(swordPath, { ...rustyShortsword, damageSplit: [] });
+      expect(checkContent(bad)).toEqual([err(swordPath, 'damageSplit', 'a weapon needs at least 1 damage kind')]);
+    });
+
+    it('rejects a weapon interval or range below 1', () => {
+      const bad = changed(swordPath, { ...rustyShortsword, weapon: { attackIntervalTicks: 0, rangeTiles: 0 } });
+      expect(own(swordPath, bad)).toEqual([
+        err(swordPath, 'weapon.attackIntervalTicks', 'must be at least 1'),
+        err(swordPath, 'weapon.rangeTiles', 'must be at least 1'),
+      ]);
+    });
+  });
+
+  describe('presets', () => {
+    it.each([3, 5])('rejects birth points totalling %i', (total) => {
+      const bad = changed(presetPath, {
+        ...militiaPreset,
+        birthPoints: [{ attribute: 'might', points: total - 1 }, { attribute: 'vigor', points: 1 }],
+      });
+      expect(checkContent(bad)).toEqual([err(presetPath, 'birthPoints', `must total 4, found ${total}`)]);
+    });
+
+    it('rejects a repeated birth-point attribute', () => {
+      const bad = changed(presetPath, {
+        ...militiaPreset,
+        birthPoints: [{ attribute: 'might', points: 2 }, { attribute: 'might', points: 2 }],
+      });
+      expect(checkContent(bad)).toEqual([err(presetPath, 'birthPoints[1].attribute', 'repeated attribute "might"')]);
+    });
+
+    it('rejects birth points below 1', () => {
+      const bad = changed(presetPath, { ...militiaPreset, birthPoints: [{ attribute: 'might', points: 0 }] });
+      expect(own(presetPath, bad)).toEqual([err(presetPath, 'birthPoints[0].points', 'must be at least 1')]);
+    });
+
+    it('rejects a weapon that is not a weapon, an armor that is not armor, and unknown ids', () => {
+      expect(checkContent(changed(presetPath, { ...militiaPreset, weapon: 'leather-jerkin' }))).toEqual([
+        err(presetPath, 'weapon', '"leather-jerkin" is not a weapon'),
+      ]);
+      expect(checkContent(changed(presetPath, { ...militiaPreset, armor: 'rusty-shortsword' }))).toEqual([
+        err(presetPath, 'armor', '"rusty-shortsword" is not armor'),
+      ]);
+      expect(checkContent(changed(presetPath, { ...militiaPreset, weapon: 'nope', armor: 'nada' }))).toEqual([
+        err(presetPath, 'armor', 'no item with id "nada"'),
+        err(presetPath, 'weapon', 'no item with id "nope"'),
+      ]);
+    });
+
+    it('accepts a preset with no weapon and no armor', () => {
+      expect(checkContent(changed(presetPath, { ...militiaPreset, weapon: null, armor: null }))).toEqual([]);
+    });
+  });
+
+  describe('arenas', () => {
+    it('rejects rows of unequal length', () => {
+      const bad = changed(arenaPath, { ...arena, rows: ['#####', '#...#', '#.#.', '#...#', '#####'] });
+      expect(checkContent(bad)).toEqual([err(arenaPath, 'rows[2]', 'is 4 characters long, expected 5 like the first row')]);
+    });
+
+    it('rejects a character other than # or .', () => {
+      const bad = changed(arenaPath, { ...arena, rows: ['#####', '#...#', '#.x.#', '#...#', '#####'] });
+      expect(checkContent(bad)).toEqual([err(arenaPath, 'rows[2]', 'unknown tile "x" at column 2 (use # or .)')]);
+    });
+
+    it('rejects a campfire out of bounds or on a wall', () => {
+      expect(checkContent(changed(arenaPath, { ...arena, campfire: { x: 9, y: 3 }, spawn: { x: 1, y: 3 } }))).toContainEqual(
+        err(arenaPath, 'campfire', '(9, 3) is outside the arena'),
+      );
+      expect(checkContent(changed(arenaPath, { ...arena, campfire: { x: 2, y: 2 }, spawn: { x: 1, y: 3 } }))).toContainEqual(
+        err(arenaPath, 'campfire', '(2, 2) is a wall'),
+      );
+    });
+
+    it('rejects a spawn that is a wall or out of bounds', () => {
+      expect(checkContent(changed(arenaPath, { ...arena, spawn: { x: 0, y: 3 } }))).toContainEqual(
+        err(arenaPath, 'spawn', '(0, 3) is not a walkable tile'),
+      );
+      expect(checkContent(changed(arenaPath, { ...arena, spawn: { x: 1, y: 9 } }))).toContainEqual(
+        err(arenaPath, 'spawn', '(1, 9) is not a walkable tile'),
+      );
+    });
+
+    it('rejects a spawn that is not next to the campfire (Chebyshev 1), including on it', () => {
+      expect(own(arenaPath, changed(arenaPath, { ...arena, spawn: { x: 1, y: 1 } }))).toEqual([
+        err(arenaPath, 'spawn', '(1, 1) must be next to the campfire (2, 3)'),
+      ]);
+      expect(own(arenaPath, changed(arenaPath, { ...arena, spawn: { x: 2, y: 3 } }))).toEqual([
+        err(arenaPath, 'spawn', '(2, 3) must be next to the campfire (2, 3)'),
+      ]);
+    });
+
+    it('accepts a diagonal spawn', () => {
+      expect(checkContent(changed(arenaPath, { ...arena, spawn: { x: 3, y: 3 } }))).toEqual([]);
+      expect(checkContent(changed(arenaPath, { ...arena, campfire: { x: 1, y: 3 }, spawn: { x: 2, y: 3 } }))).toEqual([]);
+    });
+
+    it('rejects an unknown starting preset', () => {
+      const bad = changed(arenaPath, { ...arena, startingPreset: 'nobody' });
+      expect(checkContent(bad)).toEqual([err(arenaPath, 'startingPreset', 'no preset with id "nobody"')]);
+    });
+  });
+
+  describe('waves', () => {
+    it('rejects an unknown arena and an unknown enemy', () => {
+      const bad = changed(wavePath, { ...wave, arena: 'nowhere', enemies: [{ enemy: 'ogre', x: 1, y: 1 }] });
+      expect(checkContent(bad)).toEqual([
+        err(wavePath, 'arena', 'no arena with id "nowhere"'),
+        err(wavePath, 'enemies[0].enemy', 'no enemy with id "ogre"'),
+      ]);
+    });
+
+    it('rejects a tile out of bounds, on a wall, on the campfire or on the spawn', () => {
+      const bad = changed(wavePath, {
+        ...wave,
+        enemies: [
+          { enemy: 'slime', x: 9, y: 1 },
+          { enemy: 'slime', x: 2, y: 2 },
+          { enemy: 'slime', x: 2, y: 3 },
+          { enemy: 'slime', x: 1, y: 3 },
+        ],
+      });
+      expect(checkContent(bad)).toEqual([
+        err(wavePath, 'enemies[0]', '(9, 1) is outside the arena'),
+        err(wavePath, 'enemies[1]', '(2, 2) is a wall'),
+        err(wavePath, 'enemies[2]', '(2, 3) is the campfire'),
+        err(wavePath, 'enemies[3]', '(1, 3) is the spawn tile'),
+      ]);
+    });
+
+    it('rejects a repeated tile', () => {
+      const bad = changed(wavePath, { ...wave, enemies: [{ enemy: 'slime', x: 1, y: 1 }, { enemy: 'slime', x: 1, y: 1 }] });
+      expect(checkContent(bad)).toEqual([err(wavePath, 'enemies[1]', 'repeated tile (1, 1), also used by enemies[0]')]);
+    });
+
+    it('rejects a wave with no enemies', () => {
+      expect(checkContent(changed(wavePath, { ...wave, enemies: [] }))).toEqual([
+        err(wavePath, 'enemies', 'must have at least 1 item'),
+      ]);
+    });
   });
 });
 

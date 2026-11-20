@@ -3,8 +3,20 @@
   "name": "Slime",
   "family": "slime",
   "tier": 1,
-  "health": 20,
-  "damage": [{ "kind": "force", "amount": 3 }],
-  "resistances": [{ "kind": "precision", "multiplier": 0.5 }],
+  "health": 12,
+  "speed": 500,
+  "attacks": [
+    {
+      "id": "touch",
+      "name": "Touch",
+      "windupTicks": 1,
+      "cooldownTicks": 3,
+      "damage": [{ "kind": "force", "amount": 3 }]
+    }
+  ],
+  "resistances": [
+    { "kind": "precision", "multiplier": 0.5 },
+    { "kind": "arcane", "multiplier": 1.25 }
+  ],
   "intelligence": "mindless"
 }

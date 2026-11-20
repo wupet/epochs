@@ -1,0 +1,9 @@
+{
+  "id": "hunting-bow",
+  "name": "Hunting Bow",
+  "kind": "plain",
+  "quality": "crude",
+  "damageSplit": [{ "kind": "precision", "amount": 5 }],
+  "requirements": [],
+  "weapon": { "attackIntervalTicks": 5, "rangeTiles": 6 }
+}

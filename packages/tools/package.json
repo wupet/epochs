@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Headless runner, content checker, and later the simulation tools.",
+  "exports": {
+    "./content-files": "./src/content-files.ts",
+    "./paths": "./src/paths.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"

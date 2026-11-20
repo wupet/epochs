@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   abilitySchema,
+  arenaSchema,
   ATTRIBUTES,
   classSchema,
   CONTENT_KINDS,
   DAMAGE_KINDS,
   enemySchema,
   itemSchema,
+  presetSchema,
+  waveSchema,
 } from './schemas';
+import * as schemas from './schemas';
+import * as vocabulary from './vocabulary';
 
 const militia = {
   id: 'militia',
@@ -46,7 +51,8 @@ const slime = {
   family: 'slime',
   tier: 1,
   health: 10,
-  damage: [{ kind: 'force', amount: 1 }],
+  speed: 500,
+  attacks: [{ id: 'touch', name: 'Touch', windupTicks: 1, cooldownTicks: 3, damage: [{ kind: 'force', amount: 1 }] }],
   resistances: [{ kind: 'precision', multiplier: 0.5 }],
   intelligence: 'mindless',
 };
@@ -63,7 +69,14 @@ describe('content schemas', () => {
       abilities: abilitySchema,
       items: itemSchema,
       enemies: enemySchema,
+      presets: presetSchema,
+      arenas: arenaSchema,
+      waves: waveSchema,
     });
+  });
+
+  it('re-exports the vocabulary unchanged', () => {
+    for (const [name, value] of Object.entries(vocabulary)) expect(schemas).toHaveProperty(name, value);
   });
 
   it('accepts the four samples', () => {
@@ -75,7 +88,7 @@ describe('content schemas', () => {
 
   it('rejects unknown fields', () => {
     expect(classSchema.safeParse({ ...militia, colour: 'red' }).success).toBe(false);
-    expect(enemySchema.safeParse({ ...slime, damage: [{ kind: 'force', amount: 1, extra: 1 }] }).success).toBe(false);
+    expect(enemySchema.safeParse({ ...slime, attacks: [{ ...slime.attacks[0], extra: 1 }] }).success).toBe(false);
   });
 
   it('only accepts capacity costs 1, 2, 3 and 5', () => {
@@ -105,7 +118,11 @@ describe('content schemas', () => {
     expect(itemSchema.safeParse({ ...rustyShortsword, damageSplit: [] }).success).toBe(true);
     expect(enemySchema.safeParse({ ...slime, tier: 0 }).success).toBe(false);
     expect(enemySchema.safeParse({ ...slime, health: 0 }).success).toBe(false);
-    expect(enemySchema.safeParse({ ...slime, resistances: [{ kind: 'force', multiplier: 0 }] }).success).toBe(false);
+    expect(enemySchema.safeParse({ ...slime, resistances: [{ kind: 'force', multiplier: 0 }] }).success).toBe(true);
+    expect(enemySchema.safeParse({ ...slime, resistances: [{ kind: 'force', multiplier: -0.1 }] }).success).toBe(false);
+    expect(enemySchema.safeParse({ ...slime, speed: 2000 }).success).toBe(true);
+    expect(enemySchema.safeParse({ ...slime, speed: 2001 }).success).toBe(false);
+    expect(enemySchema.safeParse({ ...slime, speed: -1 }).success).toBe(false);
     expect(enemySchema.safeParse({ ...slime, resistances: [{ kind: 'force', multiplier: 1.5 }] }).success).toBe(true);
   });
 

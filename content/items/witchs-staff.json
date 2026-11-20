@@ -1,0 +1,9 @@
+{
+  "id": "witchs-staff",
+  "name": "Witch's Staff",
+  "kind": "plain",
+  "quality": "crude",
+  "damageSplit": [{ "kind": "arcane", "amount": 3 }],
+  "requirements": [],
+  "weapon": { "attackIntervalTicks": 5, "rangeTiles": 4 }
+}

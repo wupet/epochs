@@ -1,0 +1,11 @@
+{
+  "id": "militia",
+  "name": "Militia",
+  "mainAttribute": "might",
+  "birthPoints": [
+    { "attribute": "might", "points": 3 },
+    { "attribute": "vigor", "points": 1 }
+  ],
+  "weapon": "rusty-shortsword",
+  "armor": "leather-jerkin"
+}

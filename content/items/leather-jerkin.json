@@ -1,0 +1,9 @@
+{
+  "id": "leather-jerkin",
+  "name": "Leather Jerkin",
+  "kind": "plain",
+  "quality": "crude",
+  "damageSplit": [],
+  "requirements": [],
+  "armor": { "armor": 1, "resistances": [] }
+}

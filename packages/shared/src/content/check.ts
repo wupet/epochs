@@ -4,7 +4,16 @@
  */
 import { z } from 'zod';
 import { CONTENT_KINDS, ID_PATTERN, TIER_CAPACITY_COST } from './schemas';
-import type { AbilityContent, ClassContent, ContentKind, EnemyContent, ItemContent } from './schemas';
+import type {
+  AbilityContent,
+  ArenaContent,
+  ClassContent,
+  ContentKind,
+  EnemyContent,
+  ItemContent,
+  PresetContent,
+  WaveContent,
+} from './schemas';
 
 /** A content file as the checker sees it: `path` is relative to the repo, with forward slashes. */
 export interface ContentFile {
@@ -25,6 +34,13 @@ export const MAX_ITEM_DAMAGE_KINDS = 2;
 
 /** Resistance multipliers outside this range (inclusive) get a warning. */
 export const USUAL_MULTIPLIER_RANGE = { min: 0.25, max: 3 } as const;
+
+/** A preset's birth points add up to this (design summary: "exactly 4 in total"). Matches `BIRTH_POINTS` in the character rules. */
+const PRESET_BIRTH_POINTS_TOTAL = 4;
+
+/** The tile characters of an arena's `rows`. */
+const WALL = '#';
+const FLOOR = '.';
 
 const KIND_NAMES = Object.keys(CONTENT_KINDS) as ContentKind[];
 
@@ -116,7 +132,10 @@ type Entry =
   | { readonly kind: 'classes'; readonly data: ClassContent }
   | { readonly kind: 'abilities'; readonly data: AbilityContent }
   | { readonly kind: 'items'; readonly data: ItemContent }
-  | { readonly kind: 'enemies'; readonly data: EnemyContent };
+  | { readonly kind: 'enemies'; readonly data: EnemyContent }
+  | { readonly kind: 'presets'; readonly data: PresetContent }
+  | { readonly kind: 'arenas'; readonly data: ArenaContent }
+  | { readonly kind: 'waves'; readonly data: WaveContent };
 
 /** A problem on every entry whose key was already seen earlier in the list. */
 function repeats<T>(
@@ -137,6 +156,21 @@ function repeats<T>(
 
 function repeatedKinds(name: string, list: readonly { readonly kind: string }[]): Found[] {
   return repeats(list, (e) => e.kind, (i) => `${name}[${i}].kind`, (k) => `repeated damage kind "${k}"`);
+}
+
+/** A warning on every multiplier outside the usual range (0 included). */
+function unusualMultipliers(name: string, list: readonly { readonly multiplier: number }[]): Found[] {
+  return list.flatMap((r, i): Found[] =>
+    r.multiplier < USUAL_MULTIPLIER_RANGE.min || r.multiplier > USUAL_MULTIPLIER_RANGE.max
+      ? [
+          {
+            field: `${name}[${i}].multiplier`,
+            severity: 'warning',
+            message: `${r.multiplier} is outside the usual range ${USUAL_MULTIPLIER_RANGE.min}–${USUAL_MULTIPLIER_RANGE.max}`,
+          },
+        ]
+      : [],
+  );
 }
 
 /** "a beginner", "an advanced": tier names are lowercase words, so a vowel letter is a vowel sound. */
@@ -179,25 +213,92 @@ function rulesWithinFile(entry: Entry): Found[] {
           (i) => `requirements[${i}].attribute`,
           (k) => `repeated attribute "${k}"`,
         ),
+        ...(entry.data.weapon !== undefined && kinds.size === 0
+          ? [{ field: 'damageSplit', message: 'a weapon needs at least 1 damage kind' }]
+          : []),
+        ...(entry.data.armor === undefined
+          ? []
+          : [
+              ...repeatedKinds('armor.resistances', entry.data.armor.resistances),
+              ...unusualMultipliers('armor.resistances', entry.data.armor.resistances),
+            ]),
       ];
     }
     case 'enemies':
       return [
-        ...repeatedKinds('damage', entry.data.damage),
-        ...repeatedKinds('resistances', entry.data.resistances),
-        ...entry.data.resistances.flatMap((r, i): Found[] =>
-          r.multiplier < USUAL_MULTIPLIER_RANGE.min || r.multiplier > USUAL_MULTIPLIER_RANGE.max
-            ? [
-                {
-                  field: `resistances[${i}].multiplier`,
-                  severity: 'warning',
-                  message: `${r.multiplier} is outside the usual range ${USUAL_MULTIPLIER_RANGE.min}–${USUAL_MULTIPLIER_RANGE.max}`,
-                },
-              ]
-            : [],
+        ...repeats(
+          entry.data.attacks,
+          (a) => a.id,
+          (i) => `attacks[${i}].id`,
+          (k) => `repeated attack id "${k}"`,
         ),
+        ...entry.data.attacks.flatMap((a, i) => repeatedKinds(`attacks[${i}].damage`, a.damage)),
+        ...repeatedKinds('resistances', entry.data.resistances),
+        ...unusualMultipliers('resistances', entry.data.resistances),
       ];
+    case 'presets': {
+      const total = entry.data.birthPoints.reduce((sum, b) => sum + b.points, 0);
+      return [
+        ...repeats(
+          entry.data.birthPoints,
+          (b) => b.attribute,
+          (i) => `birthPoints[${i}].attribute`,
+          (k) => `repeated attribute "${k}"`,
+        ),
+        ...(total === PRESET_BIRTH_POINTS_TOTAL
+          ? []
+          : [{ field: 'birthPoints', message: `must total ${PRESET_BIRTH_POINTS_TOTAL}, found ${total}` }]),
+      ];
+    }
+    case 'arenas':
+      return rulesForArena(entry.data);
+    case 'waves': {
+      const first = new Map<string, number>();
+      return entry.data.enemies.flatMap((e, i): Found[] => {
+        const key = describeTile(e);
+        const earlier = first.get(key);
+        if (earlier === undefined) {
+          first.set(key, i);
+          return [];
+        }
+        return [{ field: `enemies[${i}]`, message: `repeated tile ${key}, also used by enemies[${earlier}]` }];
+      });
+    }
   }
+}
+
+/** "(3, 4)", as the checker writes a tile in its messages. */
+function describeTile(t: { readonly x: number; readonly y: number }): string {
+  return `(${t.x}, ${t.y})`;
+}
+
+/** What is at a tile of an arena: a wall, floor, or nothing (outside the rows). */
+function tileAt(arena: ArenaContent, t: { readonly x: number; readonly y: number }): string | undefined {
+  return arena.rows[t.y]?.[t.x];
+}
+
+function rulesForArena(arena: ArenaContent): Found[] {
+  const found: Found[] = [];
+  const width = arena.rows[0]?.length ?? 0;
+  arena.rows.forEach((row, y) => {
+    if (row.length !== width) {
+      found.push({ field: `rows[${y}]`, message: `is ${row.length} characters long, expected ${width} like the first row` });
+    }
+    const bad = [...row].findIndex((c) => c !== WALL && c !== FLOOR);
+    if (bad !== -1) found.push({ field: `rows[${y}]`, message: `unknown tile "${row[bad]}" at column ${bad} (use ${WALL} or ${FLOOR})` });
+  });
+
+  const { campfire, spawn } = arena;
+  const campfireTile = tileAt(arena, campfire);
+  if (campfireTile === undefined) found.push({ field: 'campfire', message: `${describeTile(campfire)} is outside the arena` });
+  else if (campfireTile === WALL) found.push({ field: 'campfire', message: `${describeTile(campfire)} is a wall` });
+
+  if (tileAt(arena, spawn) !== FLOOR) {
+    found.push({ field: 'spawn', message: `${describeTile(spawn)} is not a walkable tile` });
+  } else if (Math.max(Math.abs(spawn.x - campfire.x), Math.abs(spawn.y - campfire.y)) !== 1) {
+    found.push({ field: 'spawn', message: `${describeTile(spawn)} must be next to the campfire ${describeTile(campfire)}` });
+  }
+  return found;
 }
 
 // ---- Step 6: the rules across files ------------------------------------------------------------------
@@ -224,17 +325,61 @@ function rulesAcrossFiles(loaded: readonly Loaded[]): ContentProblem[] {
     new Set(loaded.filter((l) => l.entry.kind === kind).map((l) => l.entry.data.id));
   const abilityIds = idsOf('abilities');
   const classIds = idsOf('classes');
+  const presetIds = idsOf('presets');
+  const enemyIds = idsOf('enemies');
+  const items = new Map<string, ItemContent>();
+  const arenas = new Map<string, ArenaContent>();
+  for (const { entry } of loaded) {
+    if (entry.kind === 'items') items.set(entry.data.id, entry.data);
+    if (entry.kind === 'arenas') arenas.set(entry.data.id, entry.data);
+  }
+
+  /** A preset's weapon or armor: the item must exist and have the `part` it is used as. */
+  const checkGear = (file: string, field: 'weapon' | 'armor', itemId: string | null) => {
+    if (itemId === null) return;
+    const item = items.get(itemId);
+    if (item === undefined) add(file, field, `no item with id "${itemId}"`);
+    else if (item[field] === undefined) add(file, field, `"${itemId}" is not ${field === 'weapon' ? 'a weapon' : 'armor'}`);
+  };
 
   for (const { file, entry } of loaded) {
-    if (entry.kind !== 'classes') continue;
-    entry.data.startingAbilities.forEach((abilityId, i) => {
-      if (!abilityIds.has(abilityId)) add(file, `startingAbilities[${i}]`, `no ability with id "${abilityId}"`);
-    });
-    entry.data.prerequisites.forEach((p, i) => {
-      const field = `prerequisites[${i}].classId`;
-      if (p.classId === entry.data.id) add(file, field, "a class can't require itself");
-      else if (!classIds.has(p.classId)) add(file, field, `no class with id "${p.classId}"`);
-    });
+    switch (entry.kind) {
+      case 'classes':
+        entry.data.startingAbilities.forEach((abilityId, i) => {
+          if (!abilityIds.has(abilityId)) add(file, `startingAbilities[${i}]`, `no ability with id "${abilityId}"`);
+        });
+        entry.data.prerequisites.forEach((p, i) => {
+          const field = `prerequisites[${i}].classId`;
+          if (p.classId === entry.data.id) add(file, field, "a class can't require itself");
+          else if (!classIds.has(p.classId)) add(file, field, `no class with id "${p.classId}"`);
+        });
+        break;
+      case 'presets':
+        checkGear(file, 'weapon', entry.data.weapon);
+        checkGear(file, 'armor', entry.data.armor);
+        break;
+      case 'arenas':
+        if (!presetIds.has(entry.data.startingPreset)) {
+          add(file, 'startingPreset', `no preset with id "${entry.data.startingPreset}"`);
+        }
+        break;
+      case 'waves': {
+        const arena = arenas.get(entry.data.arena);
+        if (arena === undefined) add(file, 'arena', `no arena with id "${entry.data.arena}"`);
+        entry.data.enemies.forEach((e, i) => {
+          if (!enemyIds.has(e.enemy)) add(file, `enemies[${i}].enemy`, `no enemy with id "${e.enemy}"`);
+          if (arena === undefined) return;
+          const where = describeTile(e);
+          if (tileAt(arena, e) === undefined) add(file, `enemies[${i}]`, `${where} is outside the arena`);
+          else if (tileAt(arena, e) === WALL) add(file, `enemies[${i}]`, `${where} is a wall`);
+          else if (e.x === arena.campfire.x && e.y === arena.campfire.y) add(file, `enemies[${i}]`, `${where} is the campfire`);
+          else if (e.x === arena.spawn.x && e.y === arena.spawn.y) add(file, `enemies[${i}]`, `${where} is the spawn tile`);
+        });
+        break;
+      }
+      default:
+        break;
+    }
   }
   return found;
 }
@@ -245,11 +390,15 @@ function byText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** A file that was read as its kind and passed the shape check (it may still have other problems). */
+export type ContentEntry = Entry;
+
 /**
- * Checks every file and returns the problems, sorted by file, then field, then message. Files that
- * can't be read as their kind (bad path, bad JSON, wrong shape) are left out of the cross-file checks.
+ * Checks every file and returns the problems, sorted by file, then field, then message, together with
+ * the entries that could be read as their kind. Files that can't (bad path, bad JSON, wrong shape) are
+ * left out of the entries and of the cross-file checks.
  */
-export function checkContent(files: readonly ContentFile[]): ContentProblem[] {
+export function checkAndParse(files: readonly ContentFile[]): { problems: ContentProblem[]; entries: ContentEntry[] } {
   const problems: ContentProblem[] = [];
   const loaded: Loaded[] = [];
 
@@ -293,7 +442,11 @@ export function checkContent(files: readonly ContentFile[]): ContentProblem[] {
 
   problems.push(...rulesAcrossFiles(loaded));
 
-  return problems.sort(
-    (a, b) => byText(a.file, b.file) || byText(a.field, b.field) || byText(a.message, b.message),
-  );
+  problems.sort((a, b) => byText(a.file, b.file) || byText(a.field, b.field) || byText(a.message, b.message));
+  return { problems, entries: loaded.map((l) => l.entry) };
+}
+
+/** Checks every file and returns the problems, sorted by file, then field, then message. */
+export function checkContent(files: readonly ContentFile[]): ContentProblem[] {
+  return checkAndParse(files).problems;
 }

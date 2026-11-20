@@ -4,8 +4,9 @@
   "kind": "plain",
   "quality": "crude",
   "damageSplit": [
-    { "kind": "force", "amount": 8 },
+    { "kind": "force", "amount": 4 },
     { "kind": "precision", "amount": 2 }
   ],
-  "requirements": [{ "attribute": "might", "minimum": 3 }]
+  "requirements": [],
+  "weapon": { "attackIntervalTicks": 4, "rangeTiles": 1 }
 }

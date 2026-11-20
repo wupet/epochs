@@ -1,0 +1,11 @@
+{
+  "id": "hunter",
+  "name": "Hunter",
+  "mainAttribute": "finesse",
+  "birthPoints": [
+    { "attribute": "finesse", "points": 3 },
+    { "attribute": "vigor", "points": 1 }
+  ],
+  "weapon": "hunting-bow",
+  "armor": "leather-jerkin"
+}

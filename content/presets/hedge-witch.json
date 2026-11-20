@@ -1,0 +1,11 @@
+{
+  "id": "hedge-witch",
+  "name": "Hedge Witch",
+  "mainAttribute": "wits",
+  "birthPoints": [
+    { "attribute": "wits", "points": 3 },
+    { "attribute": "vigor", "points": 1 }
+  ],
+  "weapon": "witchs-staff",
+  "armor": "leather-jerkin"
+}

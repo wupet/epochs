@@ -1,0 +1,9 @@
+{
+  "id": "cudgel",
+  "name": "Cudgel",
+  "kind": "plain",
+  "quality": "crude",
+  "damageSplit": [{ "kind": "force", "amount": 6 }],
+  "requirements": [],
+  "weapon": { "attackIntervalTicks": 5, "rangeTiles": 1 }
+}
