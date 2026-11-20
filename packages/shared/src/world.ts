@@ -284,8 +284,21 @@ function applyJoinsAndLeaves(state: WorldState, sorted: readonly Intention[]): W
   return next;
 }
 
+const DEBUG_INTENTION_KINDS: readonly string[] = [
+  'debug-preset',
+  'debug-level',
+  'debug-move-point',
+  'debug-weapon',
+  'debug-armor',
+  'debug-class-rank',
+  'debug-heal',
+  'debug-start-wave',
+  'debug-clear-enemies',
+] satisfies readonly DebugIntention['kind'][];
+
+/** True only for the nine debug kinds; anything else (an unknown `debug-…` name, a non-string) is not one. */
 function isDebugIntention(intention: Intention): intention is DebugIntention {
-  return intention.kind.startsWith('debug-');
+  return DEBUG_INTENTION_KINDS.includes(intention.kind);
 }
 
 /** 3. Debug intentions, one after another. One from a character not in the world does nothing. */

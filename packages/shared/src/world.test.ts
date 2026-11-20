@@ -723,6 +723,8 @@ describe('step: debug intentions', () => {
       debug({ kind: 'debug-move-point', from: 'might', to: 'vigor' }), // no level points to move at level 1
       debug({ kind: 'debug-move-point', from: 'constructor', to: 'vigor' }),
       debug({ kind: 'debug-class-rank', classId: 'militia', rank: 4 }),
+      debug({ kind: 'debug-bogus' }),
+      debug({ kind: 7 }),
       ...['constructor', 'nope', 'toString', '__proto__'].flatMap((id) => [
         debug({ kind: 'debug-preset', presetId: id }),
         debug({ kind: 'debug-weapon', itemId: id }),
