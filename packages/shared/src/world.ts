@@ -3,7 +3,7 @@
  * same intentions always give the same next state: no clock, no I/O, and randomness only from the
  * seeded generator state `rng`. `step` never changes the state it is given.
  */
-import { gridFromRows, isWalkable, sameTile, withBlockers } from './grid';
+import { gridFromRows, isWalkable, withBlockers } from './grid';
 import type { Grid, Tile } from './grid';
 import { findRoute } from './route';
 import { DEBUG_MOVEMENT_MODES, DEFAULT_SPEED, isDebugMovementMode, restCap } from './movement';
@@ -14,7 +14,18 @@ import type { Attribute } from './content/vocabulary';
 import { applyPreset, maxHealthOf, movePoint, newSheet, setArmor, setClassRank, setLevel, setWeapon } from './character';
 import type { PlayerSheet } from './character';
 import { walk } from './walking';
-import { clearEnemies, nearestFreeTile, startWave } from './waves';
+import { clearEnemies, findSpawnTile, isDown, startWave } from './waves';
+import {
+  canAct,
+  healDummies,
+  planPaths,
+  playerBlockers,
+  resolveCombat,
+  resolveDeaths,
+  respawnDowned,
+  routeIntoReach,
+  weaponOf,
+} from './combat';
 
 /** A character's id: a positive integer from the server's counter, never reused. */
 export type CharacterId = number;
@@ -72,8 +83,10 @@ export interface Character {
   readonly order: Order;
   /** The first tick the next basic attack may land on. Never sent to clients. */
   readonly nextAttackTick: number;
-  /** The last hits taken, for the death recap. Never sent to clients except in the owner's recap. */
+  /** The last hits taken (at most `RECAP_HITS`), for the death recap. Never sent to clients except in the owner's recap. */
   readonly recentHits: readonly Hit[];
+  /** The tick a downed player respawns on, or null while alive. Never sent to clients. */
+  readonly respawnTick: number | null;
 }
 
 /** An attack being wound up: it lands on `tiles` on tick `resolvesAt`. */
@@ -169,9 +182,13 @@ export type DebugIntention =
  * What a client (or the server on its behalf) asks for. `subtick` orders intentions within a tick;
  * it is 0 in Phase 0. A move is a wish to walk to `target`, not a result.
  * A `mode` sets the movement speed to one of the debug modes.
+ * An `attack` chases an enemy and attacks it until it dies; an `attack-move` walks to `target`,
+ * attacking enemies that come into reach on the way.
  */
 export type Intention =
   | { readonly kind: 'move'; readonly characterId: CharacterId; readonly target: Tile; readonly subtick: number }
+  | { readonly kind: 'attack'; readonly characterId: CharacterId; readonly enemyId: EnemyId; readonly subtick: number }
+  | { readonly kind: 'attack-move'; readonly characterId: CharacterId; readonly target: Tile; readonly subtick: number }
   // Debug: running and riding get real rules later.
   | { readonly kind: 'mode'; readonly characterId: CharacterId; readonly mode: DebugMovementMode; readonly subtick: number }
   | { readonly kind: 'join'; readonly characterId: CharacterId; readonly subtick: number }
@@ -218,37 +235,36 @@ export function createArenaWorld(content: ContentBundle, arenaId: string, seed: 
 }
 
 /**
- * Where a character joining now should stand: the spawn if it is free, otherwise the nearest tile
- * free of characters and enemies (see `nearestFreeTile`). If every reachable tile is taken, the
- * spawn: characters may share a tile.
- */
-export function findSpawnTile(state: WorldState): Tile {
-  const taken = [...state.characters, ...state.enemies].map((c) => c.tile);
-  return nearestFreeTile(state.grid, state.spawn, (tile) => taken.some((t) => sameTile(t, tile))) ?? state.spawn;
-}
-
-/**
  * Advance the world by one tick (the spec's "One tick"; the phases not yet built are skipped).
+ * `now` is the tick being played: `state.tick`.
  *
  * 1. Sort the intentions by (subtick, characterId); ties keep their input order. Clear the events.
- * 2. Joins and leaves.
+ * 2. Joins and leaves, then respawns (`respawnDowned`).
  * 3. Debug intentions, one after another.
  * 4. Movement modes: the last debug mode for each character sets its speed (progress is kept).
- * 5. Orders: the last move for each character becomes its order, routed around the enemies.
- * 8. Movement: players in id order, then enemies in id order, each walking (see `walk`) against
- *    blockers that reflect where everyone has already moved this tick. A move order ends when its
- *    path runs out.
+ * 5. Orders: the last order from each player who can act wins (see `applyOrders`).
+ * 7. Plan paths (`planPaths`).
+ * 8. Movement: players who can act in id order, then enemies in id order, each walking (see `walk`)
+ *    against blockers that reflect where everyone has already moved this tick. A move order ends
+ *    when its path runs out.
+ * 9. Combat (`resolveCombat`). 10. Deaths (`resolveDeaths`). 11. The dummy heals (`healDummies`).
  * 12. Add one to the tick.
  */
 export function step(state: WorldState, intentions: readonly Intention[]): WorldState {
+  const now = state.tick;
   const sorted = [...intentions].sort((a, b) => a.subtick - b.subtick || a.characterId - b.characterId);
   let next: WorldState = { ...state, hits: [], downed: [], respawned: [], recaps: [] };
   next = applyJoinsAndLeaves(next, sorted);
+  next = respawnDowned(next, now);
   next = applyDebugIntentions(next, sorted);
   next = applyModes(next, sorted);
   next = applyOrders(next, sorted);
+  next = planPaths(next);
   next = moveEveryone(next);
-  return { ...next, tick: state.tick + 1 };
+  next = resolveCombat(next, now);
+  next = resolveDeaths(next, now);
+  next = healDummies(next, now);
+  return { ...next, tick: now + 1 };
 }
 
 /** A copy of the state with one character replaced by `change(character)`. */
@@ -275,6 +291,7 @@ function applyJoinsAndLeaves(state: WorldState, sorted: readonly Intention[]): W
         order: { kind: 'none' },
         nextAttackTick: 0,
         recentHits: [],
+        respawnTick: null,
       };
       next = { ...next, characters: [...next.characters, joiner].sort((a, b) => a.id - b.id) };
     } else if (intention.kind === 'leave') {
@@ -368,28 +385,66 @@ function applyModes(state: WorldState, sorted: readonly Intention[]): WorldState
   };
 }
 
-/** 5. The last move for each character wins: a move order, routed around the enemies. */
+/**
+ * 5. Orders. The last `move`, `attack` or `attack-move` from each player who can act wins; one who is
+ * down, or at 0 health, is ignored. A move order is routed around the enemies now; attack orders are
+ * routed in step 7. Ignored, so an earlier order this tick stands (builder's calls): an `attack` or
+ * `attack-move` with no weapon, and an `attack` on an enemy that isn't in the world.
+ */
 function applyOrders(state: WorldState, sorted: readonly Intention[]): WorldState {
-  const lastMove = new Map<CharacterId, Tile>();
+  const lastOrder = new Map<CharacterId, Order>();
   for (const intention of sorted) {
-    if (intention.kind === 'move') lastMove.set(intention.characterId, intention.target);
+    const character = state.characters.find((c) => c.id === intention.characterId);
+    if (!character || !canAct(character)) continue;
+    const order = orderFrom(state, character, intention);
+    if (order) lastOrder.set(character.id, order);
   }
-  if (lastMove.size === 0) return state;
-  const blockers = withBlockers(state.grid, state.enemies.map((e) => e.tile));
+  if (lastOrder.size === 0) return state;
+  const blockers = playerBlockers(state);
   return {
     ...state,
     characters: state.characters.map((c) => {
-      const destination = lastMove.get(c.id);
-      if (destination === undefined) return c;
-      return { ...c, order: { kind: 'move', destination }, path: findRoute(blockers, c.tile, destination).path };
+      const order = lastOrder.get(c.id);
+      if (order === undefined) return c;
+      if (order.kind !== 'move') return { ...c, order };
+      return { ...c, order, path: findRoute(blockers, c.tile, order.destination).path };
     }),
   };
 }
 
-/** Where a mover is headed: its move order's destination, else the end of its path, else nowhere. */
+/** The order an intention gives a player, or null if it gives none or is ignored. */
+function orderFrom(state: WorldState, character: Character, intention: Intention): Order | null {
+  switch (intention.kind) {
+    case 'move':
+      return { kind: 'move', destination: intention.target };
+    case 'attack':
+      if (!weaponOf(character.sheet, state.content)) return null;
+      if (!state.enemies.some((e) => e.id === intention.enemyId)) return null;
+      return { kind: 'attack', enemyId: intention.enemyId };
+    case 'attack-move':
+      if (!weaponOf(character.sheet, state.content)) return null;
+      return { kind: 'attack-move', destination: intention.target, lockedOn: null };
+    default:
+      return null;
+  }
+}
+
+/** Where a mover is headed: its move or attack-move destination, else the end of its path, else nowhere. */
 function destinationOf(mover: { readonly path: readonly Tile[]; readonly order?: Order }): Tile | undefined {
-  if (mover.order?.kind === 'move') return mover.order.destination;
+  if (mover.order?.kind === 'move' || mover.order?.kind === 'attack-move') return mover.order.destination;
   return mover.path[mover.path.length - 1];
+}
+
+/** A player's re-route for `walk`: back into reach of an attack target, else toward the destination. */
+function playerReroute(state: WorldState, c: Character, blockers: Grid): (from: Tile) => readonly Tile[] {
+  const { order } = c;
+  if (order.kind === 'attack') {
+    const target = state.enemies.find((e) => e.id === order.enemyId);
+    const weapon = weaponOf(c.sheet, state.content);
+    if (!target || !weapon) return () => [];
+    return (from) => routeIntoReach(blockers, state.grid, from, target.tile, weapon.stats.rangeTiles);
+  }
+  return rerouteToward(blockers, destinationOf(c));
 }
 
 /** A re-route for `walk`: a fresh route to the destination on the blockers grid, or none. */
@@ -398,19 +453,22 @@ function rerouteToward(blockers: Grid, destination: Tile | undefined): (from: Ti
 }
 
 /**
- * 8. Movement. Players first, in id order: enemies block them, other players don't. Then enemies,
- * in id order: players and the other enemies block them, where they stand after moving this tick.
+ * 8. Movement. Players who can act first, in id order: enemies block them, other players don't.
+ * Players who can't act stay put. Then enemies, in id order: players who aren't down and the other
+ * enemies block them, where they stand after moving this tick.
  */
 function moveEveryone(state: WorldState): WorldState {
   const terrain = state.grid;
-  const playerBlockers = withBlockers(terrain, state.enemies.map((e) => e.tile));
-  const characters = state.characters.map((c) => {
-    const moved = walk(c, playerBlockers, terrain, rerouteToward(playerBlockers, destinationOf(c)));
-    return moved.order.kind === 'move' && moved.path.length === 0 ? { ...moved, order: { kind: 'none' } as const } : moved;
+  const blockersForPlayers = playerBlockers(state);
+  const characters = state.characters.map((c): Character => {
+    if (!canAct(c)) return c.stepped.length === 0 ? c : { ...c, stepped: [] };
+    const moved = walk(c, blockersForPlayers, terrain, playerReroute(state, c, blockersForPlayers));
+    return moved.order.kind === 'move' && moved.path.length === 0 ? { ...moved, order: { kind: 'none' } } : moved;
   });
+  const standing = characters.filter((c) => !isDown(c)).map((c) => c.tile);
   const enemies = [...state.enemies];
   enemies.forEach((enemy, i) => {
-    const occupied = [...characters.map((c) => c.tile), ...enemies.filter((_, j) => j !== i).map((e) => e.tile)];
+    const occupied = [...standing, ...enemies.filter((_, j) => j !== i).map((e) => e.tile)];
     const blockers = withBlockers(terrain, occupied);
     enemies[i] = walk(enemy, blockers, terrain, rerouteToward(blockers, destinationOf(enemy)));
   });

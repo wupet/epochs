@@ -1,13 +1,14 @@
 /**
- * Waves (debug): starting one places its enemies, clearing the old ones first. Pure. A wave's
- * enemies come from content; each one appears on the nearest free tile to the one the wave gives it,
- * so an enemy never shares a tile with a player or another enemy.
+ * Placing things on free tiles: waves (debug), joining players and respawns. Pure. Starting a wave
+ * places its enemies, clearing the old ones first. A wave's enemies come from content; each one
+ * appears on the nearest free tile to the one the wave gives it, so an enemy never shares a tile
+ * with a player or another enemy. A down player takes up no tile (spec builder's call 3).
  */
 import { STEP_DIRECTIONS, canStep, inBounds, isWalkable, sameTile } from './grid';
 import type { Grid, Tile } from './grid';
 import { lookup } from './content/bundle';
 import { restCap } from './movement';
-import type { Enemy, WorldState } from './world';
+import type { Character, Enemy, WorldState } from './world';
 
 /**
  * The nearest tile to `from` that `isTaken` says is free: `from` itself if it is, otherwise the first
@@ -34,6 +35,26 @@ export function nearestFreeTile(grid: Grid, from: Tile, isTaken: (tile: Tile) =>
   return null;
 }
 
+/** A player who died and has not respawned yet: they don't act, don't block, and can't be targeted or hit. */
+export function isDown(character: Pick<Character, 'respawnTick'>): boolean {
+  return character.respawnTick !== null;
+}
+
+/** The tiles that are taken: every player who isn't down, and every enemy. */
+export function occupiedTiles(state: WorldState): Tile[] {
+  return [...state.characters.filter((c) => !isDown(c)), ...state.enemies].map((c) => c.tile);
+}
+
+/**
+ * Where a character joining or respawning now should stand: the spawn if it is free, otherwise the
+ * nearest tile free of players who aren't down and of enemies (see `nearestFreeTile`). If every
+ * reachable tile is taken, the spawn: characters may share a tile.
+ */
+export function findSpawnTile(state: WorldState): Tile {
+  const taken = occupiedTiles(state);
+  return nearestFreeTile(state.grid, state.spawn, (tile) => taken.some((t) => sameTile(t, tile))) ?? state.spawn;
+}
+
 /** The world with no enemies. Enemy ids keep counting from `nextEnemyId`; they are never reused. */
 export function clearEnemies(state: WorldState): WorldState {
   return { ...state, enemies: [] };
@@ -41,7 +62,8 @@ export function clearEnemies(state: WorldState): WorldState {
 
 /**
  * Starts a wave (debug): clears the enemies, then places the wave's enemies in order, each on the
- * nearest tile free of players and of the enemies placed before it, with ids from `nextEnemyId`.
+ * nearest tile free of players (who aren't down) and of the enemies placed before it, with ids from
+ * `nextEnemyId`.
  * An enemy whose content id is unknown, or that finds no free tile, is skipped. An unknown wave id
  * (including inherited names like "constructor") returns the same state.
  */
@@ -51,7 +73,7 @@ export function startWave(state: WorldState, waveId: string): WorldState {
   const enemies: Enemy[] = [];
   let nextEnemyId = state.nextEnemyId;
   const isTaken = (tile: Tile): boolean =>
-    state.characters.some((c) => sameTile(c.tile, tile)) || enemies.some((e) => sameTile(e.tile, tile));
+    state.characters.some((c) => !isDown(c) && sameTile(c.tile, tile)) || enemies.some((e) => sameTile(e.tile, tile));
   for (const entry of wave.enemies) {
     const content = lookup(state.content.enemies, entry.enemy);
     if (!content) continue;

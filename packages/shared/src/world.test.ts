@@ -57,6 +57,7 @@ function newCharacter(walking: Pick<Character, 'id' | 'tile' | 'path' | 'speed' 
     order: { kind: 'none' },
     nextAttackTick: 0,
     recentHits: [],
+    respawnTick: null,
   };
 }
 
