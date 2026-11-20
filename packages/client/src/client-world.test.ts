@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { QueueMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
+import type { EnemyView, QueueMessage, RecapMessage, SheetMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ClientWorld, parseServerMessage } from './client-world';
+import { FLOAT_MS } from './floating-numbers';
 import { msPerTile } from './motion';
 
 const WALK_MS = msPerTile(500);
@@ -234,5 +235,244 @@ describe('parseServerMessage', () => {
     expect(parseServerMessage(JSON.stringify(welcome))).toEqual(welcome);
     const t = tick(11);
     expect(parseServerMessage(JSON.stringify(t))).toEqual(t);
+  });
+});
+
+const slime = (id: number, x: number, y: number, health = 10): EnemyView => ({
+  id,
+  x,
+  y,
+  speed: 500,
+  name: 'Slime',
+  family: 'slime',
+  health,
+  maxHealth: 10,
+});
+
+const sheetMsg: SheetMessage = {
+  type: 'sheet',
+  presetId: null,
+  level: 1,
+  attributes: { might: 1, finesse: 1, vigor: 1, wits: 1, spirit: 1 },
+  levelPoints: { might: 0, finesse: 0, vigor: 0, wits: 0, spirit: 0 },
+  weaponId: null,
+  armorId: null,
+  classRanks: {},
+  maxHealth: 30,
+};
+
+const recapMsg: RecapMessage = {
+  type: 'recap',
+  tick: 20,
+  hits: [{ tick: 19, attacker: 'Slime', attack: 'Touch', amount: 5, telegraph: { name: 'Touch', windupTicks: 2 } }],
+};
+
+const withEnemies = (enemies: EnemyView[]): WelcomeMessage => ({
+  ...welcome,
+  campfire: { x: 1, y: 1 },
+  enemies,
+  telegraphs: [{ enemyId: 5, tiles: [{ x: 1, y: 0 }], kind: 'force', resolvesAt: 12 }],
+});
+
+function enemyTick(n: number, parts: Partial<TickMessage['enemies']>, now: number, world: ClientWorld): void {
+  world.applyTick(tick(n, { enemies: { spawned: [], moved: [], removed: [], vitals: [], ...parts } }), now);
+}
+
+describe('ClientWorld combat state', () => {
+  it('mirrors campfire, catalog, telegraphs, enemies and health from a welcome', () => {
+    const world = new ClientWorld();
+    expect(world.campfire).toBeNull();
+    expect(world.catalog).toBeNull();
+    expect(world.sheet).toBeNull();
+    expect(world.recap).toBeNull();
+    expect(world.telegraphs).toEqual([]);
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    expect(world.campfire).toEqual({ x: 1, y: 1 });
+    expect(world.catalog).toBe(welcome.catalog);
+    expect(world.telegraphs).toHaveLength(1);
+    expect(world.enemyIds()).toEqual([5]);
+    expect(world.enemyTileOf(5)).toEqual({ x: 3, y: 0 });
+    expect(world.enemyPositionOf(5, 0)).toEqual({ x: 3, y: 0 });
+    expect(world.enemyInfo(5)).toEqual({ name: 'Slime', family: 'slime', health: 10, maxHealth: 10 });
+    expect(world.enemyInfo(99)).toBeUndefined();
+    expect(world.healthOf(1)).toBe(30);
+    expect(world.maxHealthOf(2)).toBe(30);
+    expect(world.healthOf(99)).toBeUndefined();
+    expect(world.maxHealthOf(99)).toBeUndefined();
+  });
+
+  it('a second welcome clears enemies, sheet, recap and numbers', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    world.applyRecap(recapMsg);
+    world.applySheet(sheetMsg);
+    world.applyWelcome(welcome, 5);
+    expect(world.enemyIds()).toEqual([]);
+    expect(world.campfire).toBeNull();
+    expect(world.sheet).toBeNull();
+    expect(world.recap).toBeNull();
+    expect(world.telegraphs).toEqual([]);
+    expect(world.floatingNumbers(5)).toEqual([]);
+  });
+
+  it('spawned enemies appear still, removed ones vanish, vitals change health', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    enemyTick(11, { spawned: [slime(6, 2, 2)], removed: [5] }, 100, world);
+    expect(world.enemyIds()).toEqual([6]);
+    expect(world.enemyPositionOf(6, 100)).toEqual({ x: 2, y: 2 });
+    expect(world.enemyPositionOf(5, 100)).toBeUndefined();
+    expect(world.enemyTileOf(5)).toBeUndefined();
+    enemyTick(12, { vitals: [{ id: 6, health: 4, maxHealth: 10 }] }, 200, world);
+    expect(world.enemyInfo(6)).toEqual({ name: 'Slime', family: 'slime', health: 4, maxHealth: 10 });
+  });
+
+  it('an enemy slides like a character, through its via tiles at its speed', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 0, 0)]), 0);
+    enemyTick(11, { moved: [{ ...slime(5, 1, 1), speed: 2000, via: [{ x: 1, y: 0 }] }] }, 0, world);
+    expect(world.enemyTileOf(5)).toEqual({ x: 1, y: 1 });
+    expect(world.enemyPositionOf(5, 0)).toEqual({ x: 0, y: 0 });
+    expect(world.enemyPositionOf(5, 125)).toEqual({ x: 1, y: 0 });
+    expect(world.enemyPositionOf(5, 250)).toEqual({ x: 1, y: 1 });
+  });
+
+  it('a moved enemy it does not know appears still, with its name', () => {
+    const world = joined();
+    enemyTick(11, { moved: [{ ...slime(8, 2, 0), via: [] }] }, 0, world);
+    expect(world.enemyPositionOf(8, 0)).toEqual({ x: 2, y: 0 });
+    expect(world.enemyInfo(8)?.name).toBe('Slime');
+  });
+
+  it('enemyAt finds the latest server tile, not the drawn one', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 0, 0), slime(6, 4, 0)]), 0);
+    enemyTick(11, { moved: [{ ...slime(5, 2, 0), via: [] }] }, 0, world);
+    expect(world.enemyAt({ x: 2, y: 0 })).toBe(5);
+    expect(world.enemyAt({ x: 0, y: 0 })).toBeUndefined();
+    expect(world.enemyAt({ x: 4, y: 0 })).toBe(6);
+  });
+
+  it("blockerTiles lists the enemies' latest server tiles", () => {
+    const world = new ClientWorld();
+    expect(world.blockerTiles()).toEqual([]);
+    world.applyWelcome(withEnemies([slime(5, 0, 0), slime(6, 4, 0)]), 0);
+    enemyTick(11, { moved: [{ ...slime(5, 2, 0), via: [] }] }, 0, world);
+    expect(world.blockerTiles()).toEqual([
+      { x: 2, y: 0 },
+      { x: 4, y: 0 },
+    ]);
+  });
+
+  it("players' health follows vitals, moved and joined entries", () => {
+    const world = joined();
+    world.applyTick(tick(11, { vitals: [{ id: 2, health: 12, maxHealth: 35 }] }), 0);
+    expect(world.healthOf(2)).toBe(12);
+    expect(world.maxHealthOf(2)).toBe(35);
+    world.applyTick(tick(12, { joined: [{ id: 3, x: 1, y: 1, speed: 500, health: 20, maxHealth: 30 }] }), 0);
+    expect(world.healthOf(3)).toBe(20);
+    world.applyTick(tick(13, { moved: [{ id: 3, x: 2, y: 1, speed: 500, health: 18, maxHealth: 30, via: [] }] }), 0);
+    expect(world.healthOf(3)).toBe(18);
+    // Vitals for a stranger change nothing.
+    world.applyTick(tick(14, { vitals: [{ id: 42, health: 1, maxHealth: 2 }] }), 0);
+    expect(world.healthOf(42)).toBeUndefined();
+    world.applyTick(tick(15, { left: [3] }), 0);
+    expect(world.healthOf(3)).toBeUndefined();
+  });
+
+  it('a downed player stays where they fell, then the respawn snaps to the new tile with no slide', () => {
+    const world = joined();
+    world.applyTick(tick(11, { moved: [{ id: 1, x: 2, y: 0, speed: 500, health: 30, maxHealth: 30, via: [] }] }), 0);
+    world.applyTick(tick(12, { downed: [1], vitals: [{ id: 1, health: 0, maxHealth: 30 }] }), WALK_MS);
+    expect(world.healthOf(1)).toBe(0);
+    expect(world.positionOf(1, WALK_MS)).toEqual({ x: 2, y: 0 });
+    expect(world.positionOf(1, WALK_MS * 5)).toEqual({ x: 2, y: 0 });
+    world.applyTick(
+      tick(13, {
+        respawned: [1],
+        moved: [{ id: 1, x: 1, y: 1, speed: 500, health: 30, maxHealth: 30, via: [] }],
+        vitals: [{ id: 1, health: 30, maxHealth: 30 }],
+      }),
+      WALK_MS * 5,
+    );
+    expect(world.tileOf(1)).toEqual({ x: 1, y: 1 });
+    expect(world.positionOf(1, WALK_MS * 5)).toEqual({ x: 1, y: 1 });
+    expect(world.healthOf(1)).toBe(30);
+  });
+
+  it('a downed player has zero health even without a vitals entry', () => {
+    const world = joined();
+    world.applyTick(tick(11, { downed: [2] }), 0);
+    expect(world.healthOf(2)).toBe(0);
+  });
+
+  it('telegraphs are replaced every tick, and cleared by an empty list', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    const next = [{ enemyId: 5, tiles: [{ x: 2, y: 0 }], kind: 'force' as const, resolvesAt: 13 }];
+    world.applyTick(tick(11, { telegraphs: next }), 0);
+    expect(world.telegraphs).toEqual(next);
+    world.applyTick(tick(12), 0);
+    expect(world.telegraphs).toEqual([]);
+  });
+
+  it("numbers appear only for your hits, at the target's drawn position, and expire after 900 ms", () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    // The enemy is mid-slide when the hits arrive: the number is placed where it is drawn.
+    enemyTick(11, { moved: [{ ...slime(5, 4, 0), via: [] }] }, 1000, world);
+    world.applyTick(
+      tick(12, {
+        hits: [
+          { attacker: { side: 'player', id: 1 }, target: { side: 'enemy', id: 5 }, amount: 7 },
+          { attacker: { side: 'player', id: 2 }, target: { side: 'enemy', id: 5 }, amount: 9 },
+          { attacker: { side: 'enemy', id: 5 }, target: { side: 'player', id: 1 }, amount: 3 },
+          { attacker: { side: 'enemy', id: 5 }, target: { side: 'player', id: 2 }, amount: 5 },
+        ],
+      }),
+      1000 + WALK_MS / 2,
+    );
+    const now = 1000 + WALK_MS / 2 + 300;
+    expect(world.floatingNumbers(now)).toEqual([
+      { x: 3.5, y: 0, amount: 7, mine: 'dealt', age: 300 },
+      { x: 0, y: 0, amount: 3, mine: 'taken', age: 300 },
+    ]);
+    expect(world.floatingNumbers(now + FLOAT_MS)).toEqual([]);
+  });
+
+  it('a hit that kills an enemy still gets its number, in the same tick as the removal', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 3, 0)]), 0);
+    world.applyTick(
+      tick(11, {
+        hits: [{ attacker: { side: 'player', id: 1 }, target: { side: 'enemy', id: 5 }, amount: 10 }],
+        enemies: { spawned: [], moved: [], removed: [5], vitals: [] },
+      }),
+      0,
+    );
+    expect(world.floatingNumbers(0)).toEqual([{ x: 3, y: 0, amount: 10, mine: 'dealt', age: 0 }]);
+  });
+
+  it('a stale tick adds no numbers', () => {
+    const world = joined();
+    world.applyTick(tick(10, { hits: [{ attacker: { side: 'enemy', id: 5 }, target: { side: 'player', id: 1 }, amount: 3 }] }), 0);
+    expect(world.floatingNumbers(0)).toEqual([]);
+  });
+
+  it('holds a sheet and a recap until replaced or dismissed', () => {
+    const world = joined();
+    world.applySheet(sheetMsg);
+    expect(world.sheet).toEqual(sheetMsg);
+    world.applyRecap(recapMsg);
+    expect(world.recap).toEqual(recapMsg);
+    world.dismissRecap();
+    expect(world.recap).toBeNull();
+  });
+});
+
+describe('parseServerMessage for combat', () => {
+  it('accepts sheet and recap messages', () => {
+    expect(parseServerMessage(JSON.stringify(sheetMsg))).toEqual(sheetMsg);
+    expect(parseServerMessage(JSON.stringify(recapMsg))).toEqual(recapMsg);
   });
 });
