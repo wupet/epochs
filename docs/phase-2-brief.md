@@ -242,6 +242,7 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
 
 - **Enemies block movement.** Players still pass through each other and can share tiles. *(Peter, 2026-11-19.)*
 - **Enemies target whoever damaged them most recently,** otherwise the nearest player. *(Peter, 2026-11-19.)*
+- **The enemy AI in this phase is a placeholder.** Keep it simple and easy to replace: smarter enemies and threat mechanics come later. *(Peter, 2026-11-19.)*
 
 ## When to ask Peter
 
