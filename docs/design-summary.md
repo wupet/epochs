@@ -40,7 +40,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - A full server (100 players) puts the next player in a queue that shows their position. *(Peter, 2026-11-19.)*
 - Players pass through each other and can share tiles. *(Peter, 2026-11-19.)*
 - Enemies block movement: every character treats an enemy's tile as blocked, and enemies can't enter a player's tile either. *(Peter, 2026-11-19 and 2026-11-20, for Phase 2.)*
-- Attack-move, like League of Legends, comes later.
+- Attack-move, like League of Legends: press A, then click a tile. You walk there, attacking the nearest enemy in weapon range and line of sight until it dies or leaves range. *(Peter, 2026-11-20; built in milestone 2.1.)*
 - Movement speed is a stat: faster characters act on earlier subticks.
 
 ## Technology
