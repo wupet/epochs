@@ -65,7 +65,7 @@ describe('checkContent', () => {
   it('says "required" for a missing enum field, not "expected one of"', () => {
     const { kind: _kind, ...withoutKind } = rustyShortsword;
     const problems = checkContent([file('content/items/rusty-shortsword.json', withoutKind)]);
-    expect(problems).toEqual([{ file: 'content/items/rusty-shortsword.json', field: 'kind', message: 'required' }]);
+    expect(problems).toEqual([{ file: 'content/items/rusty-shortsword.json', field: 'kind', severity: 'error', message: 'required' }]);
   });
 
   it('reports only the broken file when one is broken and one is valid (review focus 4)', () => {
@@ -74,7 +74,7 @@ describe('checkContent', () => {
       {
         file: 'content/items/bad.json',
         field: 'kind',
-        message: 'expected one of plain, trait, storied, holy-relic, cursed, consumable, tool',
+        severity: 'error', message: 'expected one of plain, trait, storied, holy-relic, cursed, consumable, tool',
       },
     ]);
   });
@@ -91,7 +91,7 @@ describe('checkContent', () => {
       {
         file: 'content/items/rusty-shortsword.json',
         field: 'damageSplit[1].kind',
-        message: 'expected one of force, precision, arcane, holy',
+        severity: 'error', message: 'expected one of force, precision, arcane, holy',
       },
     ]);
   });
@@ -99,14 +99,14 @@ describe('checkContent', () => {
   it('rejects a missing field', () => {
     const { capstone: _capstone, ...withoutCapstone } = militia;
     expect(checkContent([file('content/classes/militia.json', withoutCapstone), strikeFile])).toEqual([
-      { file: 'content/classes/militia.json', field: 'capstone', message: 'required' },
+      { file: 'content/classes/militia.json', field: 'capstone', severity: 'error', message: 'required' },
     ]);
   });
 
   it('rejects an extra field', () => {
     const bad = file('content/abilities/basic-strike.json', { ...basicStrike, rangeTile: 2 });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/abilities/basic-strike.json', field: 'rangeTile', message: 'unknown field' },
+      { file: 'content/abilities/basic-strike.json', field: 'rangeTile', severity: 'error', message: 'unknown field' },
     ]);
   });
 
@@ -116,8 +116,8 @@ describe('checkContent', () => {
       damage: [{ kind: 'force', amount: 1, colour: 'red', size: 2 }],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'damage[0].colour', message: 'unknown field' },
-      { file: 'content/enemies/slime.json', field: 'damage[0].size', message: 'unknown field' },
+      { file: 'content/enemies/slime.json', field: 'damage[0].colour', severity: 'error', message: 'unknown field' },
+      { file: 'content/enemies/slime.json', field: 'damage[0].size', severity: 'error', message: 'unknown field' },
     ]);
   });
 
@@ -130,13 +130,13 @@ describe('checkContent', () => {
 
   it('rejects the wrong type', () => {
     expect(checkContent([file('content/enemies/slime.json', { ...slime, name: 7 })])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'name', message: 'expected string' },
+      { file: 'content/enemies/slime.json', field: 'name', severity: 'error', message: 'expected string' },
     ]);
   });
 
   it('rejects a JSON file that is not an object', () => {
     expect(checkContent([{ path: 'content/enemies/slime.json', text: '[]' }])).toEqual([
-      { file: 'content/enemies/slime.json', field: '', message: 'expected object' },
+      { file: 'content/enemies/slime.json', field: '', severity: 'error', message: 'expected object' },
     ]);
   });
 
@@ -148,30 +148,30 @@ describe('checkContent', () => {
       damage: [{ kind: 'force', amount: 0 }],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/abilities/basic-strike.json', field: 'channelTicks', message: 'must be at least 0' },
-      { file: 'content/abilities/basic-strike.json', field: 'damage[0].amount', message: 'must be at least 1' },
-      { file: 'content/abilities/basic-strike.json', field: 'rangeTiles', message: 'must be a whole number' },
+      { file: 'content/abilities/basic-strike.json', field: 'channelTicks', severity: 'error', message: 'must be at least 0' },
+      { file: 'content/abilities/basic-strike.json', field: 'damage[0].amount', severity: 'error', message: 'must be at least 1' },
+      { file: 'content/abilities/basic-strike.json', field: 'rangeTiles', severity: 'error', message: 'must be a whole number' },
     ]);
   });
 
   it('says a multiplier must be above 0', () => {
     const bad = file('content/enemies/slime.json', { ...slime, resistances: [{ kind: 'force', multiplier: 0 }] });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', message: 'must be greater than 0' },
+      { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', severity: 'error', message: 'must be greater than 0' },
     ]);
   });
 
   it('rejects a bad id spelling', () => {
     const bad = file('content/classes/Militia.json', { ...militia, id: 'Militia' });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/classes/Militia.json', field: 'id', message: expect.stringContaining('lowercase') },
+      { file: 'content/classes/Militia.json', field: 'id', severity: 'error', message: expect.stringContaining('lowercase') },
     ]);
   });
 
   it('rejects an id that does not match the file name', () => {
     const bad = file('content/items/rusty-shortsword.json', { ...rustyShortsword, id: 'shiny-sword' });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/items/rusty-shortsword.json', field: 'id', message: 'must match the file name "rusty-shortsword"' },
+      { file: 'content/items/rusty-shortsword.json', field: 'id', severity: 'error', message: 'must match the file name "rusty-shortsword"' },
     ]);
   });
 
@@ -182,10 +182,10 @@ describe('checkContent', () => {
       file('content/items/c.json', { ...rustyShortsword, id: 'a' }),
     ]);
     expect(problems).toEqual([
-      { file: 'content/items/b.json', field: 'id', message: 'duplicate id, also used by content/items/a.json' },
-      { file: 'content/items/b.json', field: 'id', message: 'must match the file name "b"' },
-      { file: 'content/items/c.json', field: 'id', message: 'duplicate id, also used by content/items/a.json' },
-      { file: 'content/items/c.json', field: 'id', message: 'must match the file name "c"' },
+      { file: 'content/items/b.json', field: 'id', severity: 'error', message: 'duplicate id, also used by content/items/a.json' },
+      { file: 'content/items/b.json', field: 'id', severity: 'error', message: 'must match the file name "b"' },
+      { file: 'content/items/c.json', field: 'id', severity: 'error', message: 'duplicate id, also used by content/items/a.json' },
+      { file: 'content/items/c.json', field: 'id', severity: 'error', message: 'must match the file name "c"' },
     ]);
   });
 
@@ -203,7 +203,7 @@ describe('checkContent', () => {
       strikeFile,
     ]);
     expect(problems).toEqual([
-      { file: 'content/classes/militia.json', field: 'startingAbilities[1]', message: 'no ability with id "fireball"' },
+      { file: 'content/classes/militia.json', field: 'startingAbilities[1]', severity: 'error', message: 'no ability with id "fireball"' },
     ]);
   });
 
@@ -214,7 +214,7 @@ describe('checkContent', () => {
       prerequisites: [{ classId: 'ghost', rank: 2 }],
     });
     expect(checkContent([...samples(), knight])).toEqual([
-      { file: 'content/classes/knight.json', field: 'prerequisites[0].classId', message: 'no class with id "ghost"' },
+      { file: 'content/classes/knight.json', field: 'prerequisites[0].classId', severity: 'error', message: 'no class with id "ghost"' },
     ]);
   });
 
@@ -234,7 +234,7 @@ describe('checkContent', () => {
       prerequisites: [{ classId: 'knight', rank: 1 }],
     });
     expect(checkContent([...samples(), knight])).toEqual([
-      { file: 'content/classes/knight.json', field: 'prerequisites[0].classId', message: "a class can't require itself" },
+      { file: 'content/classes/knight.json', field: 'prerequisites[0].classId', severity: 'error', message: "a class can't require itself" },
     ]);
   });
 
@@ -265,7 +265,7 @@ describe('checkContent', () => {
       ],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/abilities/basic-strike.json', field: 'damage[2].kind', message: 'repeated damage kind "force"' },
+      { file: 'content/abilities/basic-strike.json', field: 'damage[2].kind', severity: 'error', message: 'repeated damage kind "force"' },
     ]);
   });
 
@@ -278,7 +278,7 @@ describe('checkContent', () => {
       ],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/enemies/slime.json', field: 'resistances[1].kind', message: 'repeated damage kind "precision"' },
+      { file: 'content/enemies/slime.json', field: 'resistances[1].kind', severity: 'error', message: 'repeated damage kind "precision"' },
     ]);
   });
 
@@ -291,7 +291,7 @@ describe('checkContent', () => {
       ],
     });
     expect(checkContent([bad])).toEqual([
-      { file: 'content/items/rusty-shortsword.json', field: 'requirements[1].attribute', message: 'repeated attribute "might"' },
+      { file: 'content/items/rusty-shortsword.json', field: 'requirements[1].attribute', severity: 'error', message: 'repeated attribute "might"' },
     ]);
   });
 
@@ -306,8 +306,8 @@ describe('checkContent', () => {
       startingAbilities: ['basic-strike', 'basic-strike'],
     });
     expect(checkContent([...samples(), knight])).toEqual([
-      { file: 'content/classes/knight.json', field: 'prerequisites[1].classId', message: 'repeated prerequisite class "militia"' },
-      { file: 'content/classes/knight.json', field: 'startingAbilities[1]', message: 'repeated starting ability "basic-strike"' },
+      { file: 'content/classes/knight.json', field: 'prerequisites[1].classId', severity: 'error', message: 'repeated prerequisite class "militia"' },
+      { file: 'content/classes/knight.json', field: 'startingAbilities[1]', severity: 'error', message: 'repeated starting ability "basic-strike"' },
     ]);
   });
 
@@ -324,7 +324,7 @@ describe('checkContent', () => {
       {
         file: 'content/items/rusty-shortsword.json',
         field: 'damageSplit',
-        message: 'at most 2 damage kinds allowed, found 3',
+        severity: 'error', message: 'at most 2 damage kinds allowed, found 3',
       },
     ]);
   });
@@ -334,14 +334,14 @@ describe('checkContent', () => {
       {
         file: 'content/spells/fireball.json',
         field: '',
-        message: 'unknown content folder "spells" (expected classes, abilities, items, enemies)',
+        severity: 'error', message: 'unknown content folder "spells" (expected classes, abilities, items, enemies)',
       },
     ]);
   });
 
   it('rejects a file that is not .json', () => {
     expect(checkContent([{ path: 'content/items/notes.txt', text: 'hello' }])).toEqual([
-      { file: 'content/items/notes.txt', field: '', message: 'not a .json file' },
+      { file: 'content/items/notes.txt', field: '', severity: 'error', message: 'not a .json file' },
     ]);
   });
 
@@ -357,6 +357,50 @@ describe('checkContent', () => {
       ['other/items/a.json', ''],
     ]);
     for (const p of problems) expect(p.message).toContain('content/<kind>/<name>.json');
+  });
+
+  it('accepts each tier with its fixed capacity cost', () => {
+    const costs = { beginner: 1, intermediate: 2, advanced: 3, expert: 5 } as const;
+    for (const [tier, capacityCost] of Object.entries(costs)) {
+      expect(checkContent([file('content/classes/militia.json', { ...militia, tier, capacityCost }), strikeFile])).toEqual([]);
+    }
+  });
+
+  it('rejects a capacity cost that does not match the tier', () => {
+    const bad = file('content/classes/militia.json', { ...militia, tier: 'advanced', capacityCost: 2 });
+    expect(checkContent([bad, strikeFile])).toEqual([
+      { file: 'content/classes/militia.json', field: 'capacityCost', severity: 'error', message: 'must be 3 for a advanced class' },
+    ]);
+  });
+
+  it('warns, without failing, about a resistance multiplier below 0.25 or above 3', () => {
+    const odd = file('content/enemies/slime.json', {
+      ...slime,
+      resistances: [
+        { kind: 'precision', multiplier: 0.2 },
+        { kind: 'force', multiplier: 4 },
+      ],
+    });
+    expect(checkContent([odd])).toEqual([
+      { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', severity: 'warning', message: '0.2 is outside the usual range 0.25–3' },
+      { file: 'content/enemies/slime.json', field: 'resistances[1].multiplier', severity: 'warning', message: '4 is outside the usual range 0.25–3' },
+    ]);
+  });
+
+  it('does not warn at the boundaries 0.25 and 3', () => {
+    const edge = file('content/enemies/slime.json', {
+      ...slime,
+      resistances: [
+        { kind: 'precision', multiplier: 0.25 },
+        { kind: 'force', multiplier: 3 },
+      ],
+    });
+    expect(checkContent([edge])).toEqual([]);
+  });
+
+  it('does not warn about multipliers on an enemy that failed validation', () => {
+    const bad = file('content/enemies/slime.json', { ...slime, health: 0, resistances: [{ kind: 'force', multiplier: 9 }] });
+    expect(checkContent([bad]).map((p) => p.severity)).toEqual(['error']);
   });
 
   it('sorts problems by file, then field, then message', () => {
@@ -381,12 +425,22 @@ describe('checkContent', () => {
 
 describe('formatProblem', () => {
   it('prints file, field and message', () => {
-    const p = { file: 'content/items/x.json', field: 'damageSplit[1].kind', message: 'expected one of force' };
+    const p = { file: 'content/items/x.json', field: 'damageSplit[1].kind', severity: 'error', message: 'expected one of force' };
     expect(formatProblem(p)).toBe('content/items/x.json: damageSplit[1].kind: expected one of force');
   });
 
+  it('prefixes a warning with "warning: " and leaves an error unprefixed', () => {
+    const p = { file: 'content/enemies/slime.json', field: 'resistances[0].multiplier', severity: 'warning' as const, message: '4 is outside the usual range 0.25–3' };
+    expect(formatProblem(p)).toBe('content/enemies/slime.json: resistances[0].multiplier: warning: 4 is outside the usual range 0.25–3');
+  });
+
+  it('prefixes a warning with no field too', () => {
+    const p = { file: 'content/items/x.json', field: '', severity: 'warning' as const, message: 'odd' };
+    expect(formatProblem(p)).toBe('content/items/x.json: warning: odd');
+  });
+
   it('leaves out an empty field', () => {
-    const p = { file: 'content/items/x.json', field: '', message: 'not a .json file' };
+    const p = { file: 'content/items/x.json', field: '', severity: 'error', message: 'not a .json file' };
     expect(formatProblem(p)).toBe('content/items/x.json: not a .json file');
   });
 });

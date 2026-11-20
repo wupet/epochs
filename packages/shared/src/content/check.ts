@@ -3,7 +3,7 @@
  * field and what is wrong. Pure: it takes file contents as input and never touches the file system.
  */
 import { z } from 'zod';
-import { CONTENT_KINDS, ID_PATTERN } from './schemas';
+import { CONTENT_KINDS, ID_PATTERN, TIER_CAPACITY_COST } from './schemas';
 import type { AbilityContent, ClassContent, ContentKind, EnemyContent, ItemContent } from './schemas';
 
 /** A content file as the checker sees it: `path` is relative to the repo, with forward slashes. */
@@ -12,23 +12,29 @@ export interface ContentFile {
   readonly text: string;
 }
 
-/** One thing wrong. `field` is a readable path such as `damageSplit[1].kind`, or `""` for the whole file. */
+/** One thing wrong. A warning is worth a look but does not fail the check. `field` is a readable path such as `damageSplit[1].kind`, or `""` for the whole file. */
 export interface ContentProblem {
   readonly file: string;
   readonly field: string;
+  readonly severity: 'error' | 'warning';
   readonly message: string;
 }
 
 /** The most kinds an item's damage split may have ("Weapons split their damage across one or two kinds"). */
 export const MAX_ITEM_DAMAGE_KINDS = 2;
 
+/** Resistance multipliers outside this range (inclusive) get a warning. */
+export const USUAL_MULTIPLIER_RANGE = { min: 0.25, max: 3 } as const;
+
 const KIND_NAMES = Object.keys(CONTENT_KINDS) as ContentKind[];
 
 export function formatProblem(p: ContentProblem): string {
-  return p.field === '' ? `${p.file}: ${p.message}` : `${p.file}: ${p.field}: ${p.message}`;
+  const message = p.severity === 'warning' ? `warning: ${p.message}` : p.message;
+  return p.field === '' ? `${p.file}: ${message}` : `${p.file}: ${p.field}: ${message}`;
 }
 
-type Found = Omit<ContentProblem, 'file'>;
+/** A problem found inside one file; `severity` defaults to `'error'`. */
+type Found = Omit<ContentProblem, 'file' | 'severity'> & { readonly severity?: ContentProblem['severity'] };
 
 function isContentKind(name: string): name is ContentKind {
   return (KIND_NAMES as readonly string[]).includes(name);
@@ -149,6 +155,9 @@ function rulesWithinFile(entry: Entry): Found[] {
           (i) => `startingAbilities[${i}]`,
           (k) => `repeated starting ability "${k}"`,
         ),
+        ...(entry.data.capacityCost === TIER_CAPACITY_COST[entry.data.tier]
+          ? []
+          : [{ field: 'capacityCost', message: `must be ${TIER_CAPACITY_COST[entry.data.tier]} for a ${entry.data.tier} class` }]),
       ];
     case 'abilities':
       return repeatedKinds('damage', entry.data.damage);
@@ -171,6 +180,17 @@ function rulesWithinFile(entry: Entry): Found[] {
       return [
         ...repeatedKinds('damage', entry.data.damage),
         ...repeatedKinds('resistances', entry.data.resistances),
+        ...entry.data.resistances.flatMap((r, i): Found[] =>
+          r.multiplier < USUAL_MULTIPLIER_RANGE.min || r.multiplier > USUAL_MULTIPLIER_RANGE.max
+            ? [
+                {
+                  field: `resistances[${i}].multiplier`,
+                  severity: 'warning',
+                  message: `${r.multiplier} is outside the usual range ${USUAL_MULTIPLIER_RANGE.min}–${USUAL_MULTIPLIER_RANGE.max}`,
+                },
+              ]
+            : [],
+        ),
       ];
   }
 }
@@ -184,7 +204,7 @@ interface Loaded {
 
 function rulesAcrossFiles(loaded: readonly Loaded[]): ContentProblem[] {
   const found: ContentProblem[] = [];
-  const add = (file: string, field: string, message: string) => found.push({ file, field, message });
+  const add = (file: string, field: string, message: string) => found.push({ file, field, severity: 'error', message });
 
   // The first file (by path) to use an id keeps it; each later one is reported.
   const firstById = new Map<string, string>();
@@ -233,7 +253,7 @@ export function checkContent(files: readonly ContentFile[]): ContentProblem[] {
 
   for (const { path, text } of ordered) {
     const report = (found: readonly Found[]) => {
-      for (const f of found) problems.push({ file: path, ...f });
+      for (const f of found) problems.push({ file: path, severity: 'error', ...f });
     };
 
     const info = readPath(path);

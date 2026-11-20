@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runCheck } from './run-check';
+import { checkReport, runCheck } from './run-check';
 
 const realRepo = fileURLToPath(new URL('../../../', import.meta.url));
 const cliPath = fileURLToPath(new URL('./check-content.ts', import.meta.url));
@@ -30,6 +30,36 @@ function brokenRepo(): string {
   return repo;
 }
 
+/** Real content plus enemies whose resistance multipliers are the given values (all unusual ones warn). */
+function warningRepo(...multipliers: number[]): string {
+  const repo = join(scratch, 'repo');
+  cpSync(join(realRepo, 'content'), join(repo, 'content'), { recursive: true });
+  multipliers.forEach((multiplier, i) => {
+    const id = `odd-${i}`;
+    const enemy = {
+      id,
+      name: 'Odd',
+      family: 'odd',
+      tier: 1,
+      health: 5,
+      damage: [{ kind: 'force', amount: 1 }],
+      resistances: [{ kind: 'precision', multiplier }],
+      intelligence: 'mindless',
+    };
+    writeFileSync(join(repo, 'content', 'enemies', `${id}.json`), JSON.stringify(enemy));
+  });
+  return repo;
+}
+
+/** Real content, one item with a single error (the kind), and one enemy with an unusual multiplier. */
+function errorAndWarningRepo(withWarning = true): string {
+  const repo = withWarning ? warningRepo(4) : warningRepo();
+  mkdirSync(join(repo, 'content', 'items'), { recursive: true });
+  const item = { id: 'broken', name: 'x', kind: 'sword', quality: 'crude', damageSplit: [], requirements: [] };
+  writeFileSync(join(repo, 'content', 'items', 'broken.json'), JSON.stringify(item));
+  return repo;
+}
+
 function runCli(env: Record<string, string> = {}, script: string = cliPath) {
   const cwd = join(scratch, 'elsewhere');
   mkdirSync(cwd, { recursive: true });
@@ -40,6 +70,19 @@ function runCli(env: Record<string, string> = {}, script: string = cliPath) {
     timeout: 20_000,
   });
 }
+
+describe('checkReport wording', () => {
+  it('says "1 error and 1 warning in 2 files" with the right singulars', () => {
+    const { lines, exitCode } = checkReport(errorAndWarningRepo());
+    expect(lines.at(-1)).toBe('Found 1 error and 1 warning in 2 files.');
+    expect(exitCode).toBe(1);
+  });
+
+  it('leaves out the warnings when there are none', () => {
+    const { lines } = checkReport(errorAndWarningRepo(false));
+    expect(lines.at(-1)).toBe('Found 1 error in 1 file.');
+  });
+});
 
 describe('runCheck', () => {
   it('finds the real content valid, all four sample files', () => {
@@ -67,7 +110,31 @@ describe('the check-content command', () => {
     const result = runCli({ EPOCHS_REPO_ROOT: brokenRepo() });
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('content/items/broken.json: kind:');
-    expect(result.stdout).toMatch(/Found \d+ problems? in 1 file\./);
+    expect(result.stdout).toMatch(/Found \d+ errors? in 1 file\.$/m);
+    expect(result.stdout).not.toContain('warning');
+  });
+
+  it('exits 0 and counts the warnings when there are only warnings', () => {
+    const result = runCli({ EPOCHS_REPO_ROOT: warningRepo(4) });
+    expect(result.stdout).toContain(
+      'content/enemies/odd-0.json: resistances[0].multiplier: warning: 4 is outside the usual range 0.25–3',
+    );
+    expect(result.stdout).toContain('All 5 content files are valid, with 1 warning.');
+    expect(result.status).toBe(0);
+  });
+
+  it('uses the plural for several warnings', () => {
+    const result = runCli({ EPOCHS_REPO_ROOT: warningRepo(4, 0.1) });
+    expect(result.stdout).toContain('All 6 content files are valid, with 2 warnings.');
+    expect(result.status).toBe(0);
+  });
+
+  it('prints errors and warnings together and exits 1', () => {
+    const result = runCli({ EPOCHS_REPO_ROOT: errorAndWarningRepo() });
+    expect(result.stdout).toContain('content/items/broken.json: kind:');
+    expect(result.stdout).toContain('content/enemies/odd-0.json: resistances[0].multiplier: warning: ');
+    expect(result.stdout).toMatch(/Found \d+ errors? and 1 warning in 2 files\.$/m);
+    expect(result.status).toBe(1);
   });
 
   it('exits 1 and says so when there is no content at all', () => {

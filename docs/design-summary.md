@@ -62,11 +62,16 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - **Five attributes:** Might, Finesse, Vigor, Wits, Spirit. Each boosts its damage kind (Vigor has none) and does things beyond damage. Points cost more past 20 and 30.
 - **Classes** in four tiers (capacity cost 1, 2, 3, 5), equipped within class capacity that grows with level. Swapped at rest stops.
 - Each class has a capstone: a bonus at full mastery. *(Peter, 2026-11-19.)*
+- A class's capacity cost is fixed by its tier: beginner 1, intermediate 2, advanced 3, expert 5. The content checker enforces it. *(Peter, 2026-11-19.)*
 - **Gear** has a damage split, quality, and low attribute requirements.
 
 ## Content is data
 
 Everything game-specific is a data file: classes, abilities, items, enemies, structures, events, feats, imprints. The engine reads them; adding content never means changing code.
+
+- Conditions and signature passives become their own content files in Phase 1. *(Peter, 2026-11-19.)*
+- Ids and fixed choices are lowercase with hyphens, such as `rusty-shortsword` and `holy-relic`. *(Peter, 2026-11-19.)*
+- Damage amounts are whole numbers of at least 1. Resistance multipliers are above 0 (below 1 resists, above 1 is a weakness); the checker warns about any outside 0.25 to 3. *(Peter, 2026-11-19.)*
 
 ## What resets each Epoch
 
