@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
-import { TICK_MS } from '@epochs/shared';
+import { TICK_MS, step } from '@epochs/shared';
 import type { CharacterView, ServerMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
 import { ManualClock } from './manual-clock';
 import { MAX_PLAYERS, createWorldServer } from './world-server';
@@ -538,5 +538,136 @@ describe('world server', () => {
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith('[epochs] stalled: skipped 36 ticks');
+  });
+
+  describe('a tick whose step throws', () => {
+    /** A step that throws on its next `failures` calls, then works. */
+    function flaky(failures: number): { step: typeof step; setFailures(n: number): void } {
+      let remaining = failures;
+      return {
+        step: (state, intentions) => {
+          if (remaining > 0) {
+            remaining--;
+            throw new Error('boom');
+          }
+          return step(state, intentions);
+        },
+        setFailures: (n) => {
+          remaining = n;
+        },
+      };
+    }
+    const twiceLines = (spy: { mock: { calls: unknown[][] } }): unknown[][] =>
+      spy.mock.calls.filter((call) => String(call[0]).includes('tick failed twice'));
+    function recordClose(client: TestClient): { code: number | undefined; reason: string } {
+      const result: { code: number | undefined; reason: string } = { code: undefined, reason: '' };
+      client.ws.on('close', (code, reason) => {
+        result.code = code;
+        result.reason = reason.toString();
+      });
+      return result;
+    }
+
+    it('retries once: the join is welcomed one tick later, and nothing is dropped or logged as dropped', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const seam = flaky(1);
+      await start({ step: seam.step });
+      const client = await connect();
+
+      clock.advance(TICK_MS); // fails
+      await client.flush();
+      expect(client.messages).toEqual([]);
+      clock.advance(TICK_MS); // the retry works
+      const welcome = await client.nextMessage('welcome');
+
+      expect(welcome.you).toBe(1);
+      expect(welcome.characters.map((c) => c.id)).toEqual([1]);
+      expect(client.ws.readyState).toBe(WebSocket.OPEN);
+      expect(twiceLines(errors)).toEqual([]);
+    });
+
+    it('drops the intentions on a second failure, logs once, closes the dropped join with 1011, and carries on', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const seam = flaky(0);
+      await start({ step: seam.step });
+      const a = await connectAndWelcome();
+      const b = await connect();
+      const closeOfB = recordClose(b);
+      move(a.client, a.welcome.characters[0]!.x + 2, a.welcome.characters[0]!.y);
+      await a.client.flush();
+      seam.setFailures(2);
+
+      clock.advance(TICK_MS);
+      expect(twiceLines(errors)).toEqual([]);
+      clock.advance(TICK_MS);
+      await b.closed();
+
+      // One join (B) and one move (A) were held.
+      expect(twiceLines(errors)).toEqual([['[epochs] tick failed twice: dropped 2 intentions']]);
+      expect(closeOfB.code).toBe(1011);
+      expect(closeOfB.reason).toBe('Could not join, please reconnect');
+      expect(b.messages).toEqual([]);
+      expect(a.client.ws.readyState).toBe(WebSocket.OPEN);
+
+      clock.advance(TICK_MS);
+      const tick = await a.client.nextMessage('tick');
+      expect(tick.joined).toEqual([]);
+      expect(tick.moved).toEqual([]); // A's move was dropped with the rest
+      clock.advance(TICK_MS);
+      await a.client.nextMessage('tick');
+      expect(twiceLines(errors)).toHaveLength(1);
+    });
+
+    it('admits the next waiting socket exactly once after closing a dropped join', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const seam = flaky(2);
+      await start({ maxPlayers: 1, step: seam.step });
+      const a = await connect();
+      const closeOfA = recordClose(a);
+      const b = await connect();
+      expect(await b.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+
+      clock.advance(TICK_MS);
+      clock.advance(TICK_MS);
+      await a.closed();
+      expect(closeOfA.code).toBe(1011);
+      clock.advance(TICK_MS);
+      const welcomeForB = await b.nextMessage('welcome');
+
+      expect(welcomeForB.you).toBe(2);
+      expect(welcomeForB.characters.map((c) => c.id)).toEqual([2]);
+      // B holds the only slot: a newcomer queues at 1, and A's late close changed nothing.
+      const c = await connect();
+      expect(await c.nextMessage('queue')).toEqual({ type: 'queue', position: 1 });
+      await c.flush();
+      for (let i = 0; i < 3; i++) clock.advance(TICK_MS);
+      await waitFor(() => b.messages.filter((m) => m.type === 'tick').length === 3);
+      expect(b.messages.flatMap((m) => (m.type === 'tick' ? [...m.joined.map((x) => x.id), ...m.left] : []))).toEqual([]);
+      expect(c.messages.map((m) => m.type)).toEqual(['queue']);
+    });
+
+    it('sends a leave for a character that is in the world but has no connection', async () => {
+      let inject = false;
+      await start({
+        step: (state, intentions) => {
+          const next = step(state, intentions);
+          if (!inject) return next;
+          inject = false;
+          return { ...next, characters: [...next.characters, { ...next.characters[0]!, id: 99 }] };
+        },
+      });
+      const a = await connectAndWelcome();
+
+      inject = true;
+      clock.advance(TICK_MS);
+      expect((await a.client.nextMessage('tick')).joined.map((c) => c.id)).toEqual([99]);
+      clock.advance(TICK_MS);
+      const tick = await a.client.nextMessage('tick');
+
+      expect(tick.left).toEqual([99]);
+      expect(tick.joined).toEqual([]);
+      clock.advance(TICK_MS);
+      expect((await a.client.nextMessage('tick')).left).toEqual([]);
+    });
   });
 });

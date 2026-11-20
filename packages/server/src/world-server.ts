@@ -22,6 +22,8 @@ export interface WorldServerOptions {
   readonly spawn?: Tile;
   /** How many may play at once; later connections wait in a queue. Default `MAX_PLAYERS`. */
   readonly maxPlayers?: number;
+  /** The tick function. The shared `step` by default; tests pass one that throws or adds characters. */
+  readonly step?: typeof step;
 }
 
 /** How many players may be in the world at once. */
@@ -61,6 +63,9 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   let latestModes = new Map<CharacterId, DebugMovementMode>();
   let nextId: CharacterId = 1;
   const maxPlayers = options.maxPlayers ?? MAX_PLAYERS;
+  const stepWorld = options.step ?? step;
+  /** How many ticks in a row `step` has thrown. A tick that fails twice has its intentions dropped. */
+  let failedTicks = 0;
   /** The playing connections: those with a character (a join has been queued). */
   const connections = new Map<CharacterId, Connection>();
   /** Sockets waiting for a place, first come first served. The first is at position 1. */
@@ -160,13 +165,59 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
     return [...queuedLifecycle, ...modes, ...moves];
   };
 
+  /**
+   * Gives up on the held intentions after a tick failed twice. A dropped join's socket is told to
+   * reconnect and forgotten (so its close does nothing), and the next waiting socket takes its place.
+   */
+  const dropIntentions = (dropped: readonly Intention[]): void => {
+    queuedLifecycle = [];
+    latestMoves = new Map();
+    latestModes = new Map();
+    console.error(`[epochs] tick failed twice: dropped ${dropped.length} intentions`);
+    for (const intention of dropped) {
+      if (intention.kind !== 'join') continue;
+      const connection = connections.get(intention.characterId);
+      if (connection === undefined) continue; // its socket already closed
+      connections.delete(intention.characterId);
+      idOf.delete(connection.socket);
+      connection.socket.close(1011, 'Could not join, please reconnect');
+      const next = waiting.shift();
+      if (next !== undefined) {
+        admit(next);
+        sendQueuePositions(0);
+      }
+    }
+  };
+
+  /** Queues a leave for every character in the world that no playing connection holds. */
+  const queueGhostLeaves = (): void => {
+    for (const character of state.characters) {
+      if (connections.has(character.id)) continue;
+      const leaving = queuedLifecycle.some((i) => i.kind === 'leave' && i.characterId === character.id);
+      if (!leaving) queuedLifecycle.push({ kind: 'leave', characterId: character.id, subtick: 0 });
+    }
+  };
+
   const onTick = (): void => {
     // The loop ends silently if this throws, so one bad tick must not escape.
     try {
+      queueGhostLeaves();
       const prev = state;
       const intentions = takeIntentions();
       // Only forget the intentions once `step` has accepted them, so a failed tick is retried next tick.
-      const next = step(prev, intentions);
+      let next: WorldState;
+      try {
+        next = stepWorld(prev, intentions);
+      } catch (error) {
+        console.error('Tick failed:', error);
+        failedTicks++;
+        if (failedTicks >= 2) {
+          failedTicks = 0;
+          dropIntentions(intentions);
+        }
+        return;
+      }
+      failedTicks = 0;
       queuedLifecycle = [];
       latestMoves = new Map();
       latestModes = new Map();
