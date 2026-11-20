@@ -369,7 +369,20 @@ describe('checkContent', () => {
   it('rejects a capacity cost that does not match the tier', () => {
     const bad = file('content/classes/militia.json', { ...militia, tier: 'advanced', capacityCost: 2 });
     expect(checkContent([bad, strikeFile])).toEqual([
-      { file: 'content/classes/militia.json', field: 'capacityCost', severity: 'error', message: 'must be 3 for a advanced class' },
+      { file: 'content/classes/militia.json', field: 'capacityCost', severity: 'error', message: 'must be 3 for an advanced class' },
+    ]);
+  });
+
+  it('uses "a" or "an" to suit the tier in the capacity cost message', () => {
+    const wrong = { beginner: 2, intermediate: 1, advanced: 1, expert: 1 } as const;
+    const messages = Object.entries(wrong).map(([tier, capacityCost]) =>
+      checkContent([file('content/classes/militia.json', { ...militia, tier, capacityCost }), strikeFile])[0]!.message,
+    );
+    expect(messages).toEqual([
+      'must be 1 for a beginner class',
+      'must be 2 for an intermediate class',
+      'must be 3 for an advanced class',
+      'must be 5 for an expert class',
     ]);
   });
 
@@ -425,7 +438,7 @@ describe('checkContent', () => {
 
 describe('formatProblem', () => {
   it('prints file, field and message', () => {
-    const p = { file: 'content/items/x.json', field: 'damageSplit[1].kind', severity: 'error', message: 'expected one of force' };
+    const p = { file: 'content/items/x.json', field: 'damageSplit[1].kind', severity: 'error' as const, message: 'expected one of force' };
     expect(formatProblem(p)).toBe('content/items/x.json: damageSplit[1].kind: expected one of force');
   });
 
@@ -440,7 +453,7 @@ describe('formatProblem', () => {
   });
 
   it('leaves out an empty field', () => {
-    const p = { file: 'content/items/x.json', field: '', severity: 'error', message: 'not a .json file' };
+    const p = { file: 'content/items/x.json', field: '', severity: 'error' as const, message: 'not a .json file' };
     expect(formatProblem(p)).toBe('content/items/x.json: not a .json file');
   });
 });

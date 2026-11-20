@@ -139,6 +139,11 @@ function repeatedKinds(name: string, list: readonly { readonly kind: string }[])
   return repeats(list, (e) => e.kind, (i) => `${name}[${i}].kind`, (k) => `repeated damage kind "${k}"`);
 }
 
+/** "a beginner", "an advanced": tier names are lowercase words, so a vowel letter is a vowel sound. */
+function withArticle(word: string): string {
+  return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
+}
+
 function rulesWithinFile(entry: Entry): Found[] {
   switch (entry.kind) {
     case 'classes':
@@ -157,7 +162,7 @@ function rulesWithinFile(entry: Entry): Found[] {
         ),
         ...(entry.data.capacityCost === TIER_CAPACITY_COST[entry.data.tier]
           ? []
-          : [{ field: 'capacityCost', message: `must be ${TIER_CAPACITY_COST[entry.data.tier]} for a ${entry.data.tier} class` }]),
+          : [{ field: 'capacityCost', message: `must be ${TIER_CAPACITY_COST[entry.data.tier]} for ${withArticle(entry.data.tier)} class` }]),
       ];
     case 'abilities':
       return repeatedKinds('damage', entry.data.damage);
