@@ -130,7 +130,8 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
       const message = parseClientMessage(data.toString(), grid);
       if (message === null) return;
       if (message.type === 'move') latestMoves.set(characterId, { x: message.x, y: message.y });
-      else latestModes.set(characterId, message.mode);
+      else if (message.type === 'mode') latestModes.set(characterId, message.mode);
+      // Attacks and debug messages are wired up in the combat tasks that follow.
     });
     // A socket error is always followed by a close, which is where we clean up.
     socket.on('error', () => {});

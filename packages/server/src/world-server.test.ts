@@ -188,11 +188,11 @@ describe('world server', () => {
     }
 
     expect(perTick).toEqual([
-      [{ id: 1, x: origin.x + 1, y: origin.y, speed: 500, via: [] }],
+      [{ id: 1, x: origin.x + 1, y: origin.y, speed: 500, health: 33, maxHealth: 33, via: [] }],
       [],
-      [{ id: 1, x: origin.x + 2, y: origin.y, speed: 500, via: [] }],
+      [{ id: 1, x: origin.x + 2, y: origin.y, speed: 500, health: 33, maxHealth: 33, via: [] }],
       [],
-      [{ id: 1, x: origin.x + 3, y: origin.y, speed: 500, via: [] }],
+      [{ id: 1, x: origin.x + 3, y: origin.y, speed: 500, health: 33, maxHealth: 33, via: [] }],
       [],
     ]);
   });
@@ -205,7 +205,7 @@ describe('world server', () => {
     move(a, x, y - 6);
     await a.flush();
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y: y - 1, speed: 500, via: [] }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y: y - 1, speed: 500, health: 33, maxHealth: 33, via: [] }]);
 
     move(a, x, y + 6);
     await a.flush();
@@ -213,7 +213,7 @@ describe('world server', () => {
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([]);
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y, speed: 500, via: [] }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x, y, speed: 500, health: 33, maxHealth: 33, via: [] }]);
   });
 
   it('applies only the latest of many moves sent within one tick', async () => {
@@ -226,12 +226,12 @@ describe('world server', () => {
     await a.flush();
 
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, via: [] }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, health: 33, maxHealth: 33, via: [] }]);
     expect(a.ws.readyState).toBe(WebSocket.OPEN);
     clock.advance(TICK_MS);
     expect((await a.nextMessage('tick')).moved).toEqual([]); // a rest tick: walking is a tile every 2 ticks
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y, speed: 500, via: [] }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 2, y, speed: 500, health: 33, maxHealth: 33, via: [] }]);
   });
 
   it('ignores bad messages, keeps the socket open, and still accepts a valid move', async () => {
@@ -252,10 +252,10 @@ describe('world server', () => {
     move(a, x + 2, y);
     await a.flush();
     clock.advance(TICK_MS);
-    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, via: [] }]);
+    expect((await a.nextMessage('tick')).moved).toEqual([{ id: 1, x: x + 1, y, speed: 500, health: 33, maxHealth: 33, via: [] }]);
   });
 
-  it('never sends a path, progress or stepped, and only { id, x, y, speed } (plus via on moved) for a character', async () => {
+  it('never sends a path, progress or stepped, and only { id, x, y, speed, health, maxHealth } (plus via on moved) for a character', async () => {
     await start();
     const a = await connectAndWelcome();
     const b = await connectAndWelcome();
@@ -268,10 +268,10 @@ describe('world server', () => {
       await b.client.nextMessage('tick');
     }
 
-    const welcomeKeys = ['characters', 'grid', 'tick', 'type', 'you'];
-    const tickKeys = ['joined', 'left', 'moved', 'tick', 'type'];
-    const characterKeys = ['id', 'speed', 'x', 'y'];
-    const movedKeys = ['id', 'speed', 'via', 'x', 'y'];
+    const welcomeKeys = ['campfire', 'catalog', 'characters', 'enemies', 'grid', 'telegraphs', 'tick', 'type', 'you'];
+    const tickKeys = ['downed', 'enemies', 'hits', 'joined', 'left', 'moved', 'respawned', 'telegraphs', 'tick', 'type', 'vitals'];
+    const characterKeys = ['health', 'id', 'maxHealth', 'speed', 'x', 'y'];
+    const movedKeys = ['health', 'id', 'maxHealth', 'speed', 'via', 'x', 'y'];
     // B's welcome plus twelve ticks (six tiles of walking).
     expect(b.client.messages).toHaveLength(13);
     for (const message of b.client.messages) {
@@ -513,7 +513,7 @@ describe('world server', () => {
     const welcome = await b.nextMessage('welcome');
     clock.advance(TICK_MS);
     expect((await b.nextMessage('tick')).moved).toEqual([]);
-    expect(welcome.characters).toEqual([{ id: 2, x: 16, y: 16, speed: 500 }]);
+    expect(welcome.characters).toEqual([{ id: 2, x: 16, y: 16, speed: 500, health: 33, maxHealth: 33 }]);
   });
 
   it('steps every tick after a debug run mode message, then a move', async () => {
@@ -531,9 +531,9 @@ describe('world server', () => {
       perTick.push([...(await a.nextMessage('tick')).moved]);
     }
     expect(perTick).toEqual([
-      [{ id: 1, x: x + 1, y, speed: 1000, via: [] }],
-      [{ id: 1, x: x + 2, y, speed: 1000, via: [] }],
-      [{ id: 1, x: x + 3, y, speed: 1000, via: [] }],
+      [{ id: 1, x: x + 1, y, speed: 1000, health: 33, maxHealth: 33, via: [] }],
+      [{ id: 1, x: x + 2, y, speed: 1000, health: 33, maxHealth: 33, via: [] }],
+      [{ id: 1, x: x + 3, y, speed: 1000, health: 33, maxHealth: 33, via: [] }],
     ]);
   });
 
@@ -555,9 +555,9 @@ describe('world server', () => {
     // A rested horse moves two tiles on every tick, from the first.
     const moved = a.messages.flatMap((m) => (m.type === 'tick' ? m.moved : []));
     expect(moved).toEqual([
-      { id: 1, x, y: y - 2, speed: 2000, via: [{ x, y: y - 1 }] },
-      { id: 1, x, y: y - 4, speed: 2000, via: [{ x, y: y - 3 }] },
-      { id: 1, x, y: y - 6, speed: 2000, via: [{ x, y: y - 5 }] },
+      { id: 1, x, y: y - 2, speed: 2000, health: 33, maxHealth: 33, via: [{ x, y: y - 1 }] },
+      { id: 1, x, y: y - 4, speed: 2000, health: 33, maxHealth: 33, via: [{ x, y: y - 3 }] },
+      { id: 1, x, y: y - 6, speed: 2000, health: 33, maxHealth: 33, via: [{ x, y: y - 5 }] },
     ]);
     for (const entry of moved) {
       for (const tile of entry.via) expect(Object.keys(tile).sort()).toEqual(['x', 'y']);
