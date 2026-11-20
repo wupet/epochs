@@ -75,9 +75,10 @@ function describeBound(origin: string, bound: number, inclusive: boolean, direct
 }
 
 function describeIssue(issue: z.core.$ZodIssue): string {
+  // A missing field is "required" whatever the schema expected (a type, an enum, a literal).
+  if (issue.input === undefined) return 'required';
   switch (issue.code) {
     case 'invalid_type':
-      if (issue.input === undefined) return 'required';
       if (issue.expected === 'int') return 'must be a whole number';
       return `expected ${issue.expected}`;
     case 'invalid_value':

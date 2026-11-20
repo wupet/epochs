@@ -657,6 +657,31 @@ describe('world server', () => {
       expect(twiceLines(errors)).toHaveLength(1);
     });
 
+    it('still tells the others about a leave that was dropped with the tick (ghost cleanup re-queues it)', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const seam = flaky(0);
+      await start({ step: seam.step });
+      const a = await connectAndWelcome();
+      const b = await connectAndWelcome();
+
+      a.client.ws.close();
+      await a.client.closed();
+      // Round trips on B give the server time to see A's close, so its leave is queued.
+      await b.client.flush();
+      await b.client.flush();
+      seam.setFailures(2);
+
+      clock.advance(TICK_MS); // fails, retried at the next tick
+      clock.advance(TICK_MS); // fails again: everything held, A's leave included, is dropped
+      expect(twiceLines(errors)).toEqual([['[epochs] tick failed twice: dropped 1 intentions']]);
+
+      clock.advance(TICK_MS);
+      const tick = await b.client.nextMessage('tick');
+      expect(tick.left).toEqual([a.welcome.you]);
+      clock.advance(TICK_MS);
+      expect((await b.client.nextMessage('tick')).left).toEqual([]);
+    });
+
     it('admits the next waiting socket exactly once after closing a dropped join', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => {});
       const seam = flaky(2);

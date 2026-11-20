@@ -62,6 +62,12 @@ describe('checkContent', () => {
     expect(checkContent([])).toEqual([]);
   });
 
+  it('says "required" for a missing enum field, not "expected one of"', () => {
+    const { kind: _kind, ...withoutKind } = rustyShortsword;
+    const problems = checkContent([file('content/items/rusty-shortsword.json', withoutKind)]);
+    expect(problems).toEqual([{ file: 'content/items/rusty-shortsword.json', field: 'kind', message: 'required' }]);
+  });
+
   it('reports only the broken file when one is broken and one is valid (review focus 4)', () => {
     const broken = file('content/items/bad.json', { ...rustyShortsword, id: 'bad', kind: 'shiny' });
     expect(checkContent([strikeFile, broken])).toEqual([
