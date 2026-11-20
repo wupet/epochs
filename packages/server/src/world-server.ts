@@ -7,11 +7,22 @@ import {
   gridFromRows,
   parseClientMessage,
   queueMessage,
+  recapMessage,
+  sheetMessage,
   step,
   tickMessage,
   welcomeMessage,
 } from '@epochs/shared';
-import type { CharacterId, DebugMovementMode, Intention, Tile, WorldState } from '@epochs/shared';
+import type {
+  CharacterId,
+  ClientMessage,
+  DebugIntention,
+  DebugMessage,
+  DebugMovementMode,
+  Intention,
+  Tile,
+  WorldState,
+} from '@epochs/shared';
 import { startTickLoop } from './tick-loop';
 import type { TickClock, TickLoop } from './tick-loop';
 import { TEST_MAP_ROWS, TEST_MAP_SPAWN } from './test-map';
@@ -19,6 +30,8 @@ import { TEST_MAP_ROWS, TEST_MAP_SPAWN } from './test-map';
 export interface WorldServerOptions {
   /** Where ticks come from. Real time by default; tests pass a `ManualClock`. */
   readonly clock?: TickClock;
+  /** The initial world, such as an arena world from content. Overrides `rows` and `spawn`. */
+  readonly world?: WorldState;
   readonly rows?: readonly string[];
   readonly spawn?: Tile;
   /** How many may play at once; later connections wait in a queue. Default `MAX_PLAYERS`. */
@@ -34,6 +47,21 @@ export const MAX_PLAYERS = 100;
 
 /** How many connections may wait for a place at once. */
 export const MAX_QUEUE = 100;
+
+/**
+ * Debug: how many `debug-*` messages one player may have queued in one tick. The 9th and later in a tick
+ * are dropped, so a flood of debug messages cannot grow the queue or the work of a tick.
+ */
+export const MAX_DEBUG_INTENTIONS_PER_TICK = 8;
+
+/** The orders a player can give: only the latest of them in a tick counts. */
+type OrderIntention = Extract<Intention, { kind: 'move' | 'attack' | 'attack-move' }>;
+
+/** A client's debug message as the debug intention it asks for. The parser has already checked its fields. */
+function debugIntentionOf(message: DebugMessage, characterId: CharacterId): DebugIntention {
+  const { type, ...fields } = message;
+  return { ...fields, kind: type, characterId, subtick: 0 } as DebugIntention;
+}
 
 export interface WorldServer {
   /** Starts listening and ticking. Resolves with the port actually bound (pass 0 for any free port). */
@@ -59,12 +87,16 @@ interface Connection {
  * and are told their position whenever it changes. A waiting connection has no character and no id.
  */
 export function createWorldServer(options: WorldServerOptions = {}): WorldServer {
-  const grid = gridFromRows(options.rows ?? TEST_MAP_ROWS);
-  let state: WorldState = createWorld(grid, options.spawn ?? TEST_MAP_SPAWN);
-  // Joins and leaves are queued in arrival order. Moves are not: only each character's latest move this
-  // tick is kept, so a flood of moves cannot grow the queue.
+  let state: WorldState =
+    options.world ?? createWorld(gridFromRows(options.rows ?? TEST_MAP_ROWS), options.spawn ?? TEST_MAP_SPAWN);
+  const grid = state.grid;
+  // Joins and leaves are queued in arrival order. Orders are not: only each character's latest order (move,
+  // attack or attack-move) this tick is kept, so a flood of orders cannot grow the queue.
   let queuedLifecycle: Intention[] = [];
-  let latestMoves = new Map<CharacterId, Tile>();
+  let latestOrders = new Map<CharacterId, OrderIntention>();
+  // Debug intentions keep arrival order, at most MAX_DEBUG_INTENTIONS_PER_TICK per character per tick.
+  let queuedDebug: DebugIntention[] = [];
+  let debugCounts = new Map<CharacterId, number>();
   // Debug: the latest movement mode per character this tick, kept like the latest moves.
   let latestModes = new Map<CharacterId, DebugMovementMode>();
   let nextId: CharacterId = 1;
@@ -104,6 +136,36 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
     queuedLifecycle.push({ kind: 'join', characterId, subtick: 0 });
   };
 
+  /** Queues what a client asked for. Only intentions are queued: the server decides what comes of them. */
+  const queueFrom = (characterId: CharacterId, message: ClientMessage): void => {
+    switch (message.type) {
+      case 'move':
+        latestOrders.set(characterId, { kind: 'move', characterId, target: { x: message.x, y: message.y }, subtick: 0 });
+        return;
+      case 'attack':
+        latestOrders.set(characterId, { kind: 'attack', characterId, enemyId: message.enemyId, subtick: 0 });
+        return;
+      case 'attack-move':
+        latestOrders.set(characterId, {
+          kind: 'attack-move',
+          characterId,
+          target: { x: message.x, y: message.y },
+          subtick: 0,
+        });
+        return;
+      case 'mode':
+        latestModes.set(characterId, message.mode);
+        return;
+      default: {
+        // Debug: every other message is a debug-* one.
+        const count = debugCounts.get(characterId) ?? 0;
+        if (count >= MAX_DEBUG_INTENTIONS_PER_TICK) return;
+        debugCounts.set(characterId, count + 1);
+        queuedDebug.push(debugIntentionOf(message, characterId));
+      }
+    }
+  };
+
   /** Tells each waiting socket from `fromIndex` on its (new) 1-based position. */
   const sendQueuePositions = (fromIndex: number): void => {
     for (let i = fromIndex; i < waiting.length; i++) send(waiting[i]!, JSON.stringify(queueMessage(i + 1)));
@@ -129,9 +191,7 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
       if (characterId === undefined || isBinary) return; // a waiting socket is ignored
       const message = parseClientMessage(data.toString(), grid);
       if (message === null) return;
-      if (message.type === 'move') latestMoves.set(characterId, { x: message.x, y: message.y });
-      else if (message.type === 'mode') latestModes.set(characterId, message.mode);
-      // Attacks and debug messages are wired up in the combat tasks that follow.
+      queueFrom(characterId, message);
     });
     // A socket error is always followed by a close, which is where we clean up.
     socket.on('error', () => {});
@@ -167,17 +227,24 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
   };
 
   /**
-   * Queued joins and leaves in arrival order, then one debug mode per character in ascending id order,
-   * then one move per character in ascending id order.
+   * Queued joins and leaves in arrival order, then the debug intentions in arrival order, then one debug
+   * mode per character in ascending id order, then one order per character in ascending id order.
    */
   const takeIntentions = (): Intention[] => {
     const modes: Intention[] = [...latestModes.entries()]
       .sort(([a], [b]) => a - b)
       .map(([characterId, mode]) => ({ kind: 'mode', characterId, mode, subtick: 0 }));
-    const moves: Intention[] = [...latestMoves.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([characterId, target]) => ({ kind: 'move', characterId, target, subtick: 0 }));
-    return [...queuedLifecycle, ...modes, ...moves];
+    const orders: Intention[] = [...latestOrders.entries()].sort(([a], [b]) => a - b).map(([, order]) => order);
+    return [...queuedLifecycle, ...queuedDebug, ...modes, ...orders];
+  };
+
+  /** Forgets everything queued for the next tick. */
+  const clearQueued = (): void => {
+    queuedLifecycle = [];
+    latestOrders = new Map();
+    latestModes = new Map();
+    queuedDebug = [];
+    debugCounts = new Map();
   };
 
   /**
@@ -185,9 +252,7 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
    * reconnect and forgotten (so its close does nothing), and the next waiting socket takes its place.
    */
   const dropIntentions = (dropped: readonly Intention[]): void => {
-    queuedLifecycle = [];
-    latestMoves = new Map();
-    latestModes = new Map();
+    clearQueued();
     console.error(`[epochs] tick failed twice: dropped ${dropped.length} intentions`);
     for (const intention of dropped) {
       if (intention.kind !== 'join') continue;
@@ -233,20 +298,31 @@ export function createWorldServer(options: WorldServerOptions = {}): WorldServer
         return;
       }
       failedTicks = 0;
-      queuedLifecycle = [];
-      latestMoves = new Map();
-      latestModes = new Map();
+      clearQueued();
       state = next;
 
       const tick = JSON.stringify(tickMessage(prev, state));
       for (const connection of connections.values()) {
         if (connection.welcomed) send(connection.socket, tick);
       }
-      // A new socket gets its welcome after this tick's diff, never a tick before it.
+      // Private messages go to their owner only, after the broadcast. A sheet follows when it changed, by
+      // value (a setter may return a new object for no change); a recap follows a death.
+      for (const connection of connections.values()) {
+        if (!connection.welcomed) continue;
+        const id = connection.characterId;
+        const sheet = JSON.stringify(sheetMessage(state, id));
+        if (sheet !== 'null' && sheet !== JSON.stringify(sheetMessage(prev, id))) send(connection.socket, sheet);
+        for (const recap of state.recaps) {
+          if (recap.characterId === id) send(connection.socket, JSON.stringify(recapMessage(recap)));
+        }
+      }
+      // A new socket gets its welcome after this tick's diff, never a tick before it, and then its sheet.
       for (const connection of connections.values()) {
         if (connection.welcomed) continue;
         if (!state.characters.some((c) => c.id === connection.characterId)) continue;
         send(connection.socket, JSON.stringify(welcomeMessage(state, connection.characterId)));
+        const sheet = sheetMessage(state, connection.characterId);
+        if (sheet !== null) send(connection.socket, JSON.stringify(sheet));
         connection.welcomed = true;
       }
     } catch (error) {

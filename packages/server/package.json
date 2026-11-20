@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@epochs/shared": "*",
+    "@epochs/tools": "*",
     "ws": "^8.23.0"
   },
   "devDependencies": {

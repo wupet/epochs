@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
-import { TICK_MS, step } from '@epochs/shared';
-import type { CharacterView, ServerMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
+import { TICK_MS, createArenaWorld, step } from '@epochs/shared';
+import type { CharacterView, RecapMessage, ServerMessage, SheetMessage, TickMessage, WelcomeMessage } from '@epochs/shared';
+import { CONTENT_DIR } from '@epochs/tools/paths';
+import { loadContent } from './load-content';
 import { ManualClock } from './manual-clock';
-import { MAX_PLAYERS, MAX_QUEUE, createWorldServer } from './world-server';
+import { MAX_DEBUG_INTENTIONS_PER_TICK, MAX_PLAYERS, MAX_QUEUE, createWorldServer } from './world-server';
 import type { WorldServer, WorldServerOptions } from './world-server';
 
 /** Polls until `predicate` is true. Fails after `timeoutMs`. Never sleeps blindly. */
@@ -155,7 +157,7 @@ describe('world server', () => {
 
     clock.advance(TICK_MS);
     await client.nextMessage('welcome');
-    expect(client.messages.map((m) => m.type)).toEqual(['welcome']);
+    expect(client.messages.map((m) => m.type)).toEqual(['welcome', 'sheet']); // the sheet follows the welcome
   });
 
   it('lets two clients see each other', async () => {
@@ -272,9 +274,15 @@ describe('world server', () => {
     const tickKeys = ['downed', 'enemies', 'hits', 'joined', 'left', 'moved', 'respawned', 'telegraphs', 'tick', 'type', 'vitals'];
     const characterKeys = ['health', 'id', 'maxHealth', 'speed', 'x', 'y'];
     const movedKeys = ['health', 'id', 'maxHealth', 'speed', 'via', 'x', 'y'];
-    // B's welcome plus twelve ticks (six tiles of walking).
-    expect(b.client.messages).toHaveLength(13);
+    // B's welcome and its own sheet, plus twelve ticks (six tiles of walking). A's sheet never reaches B.
+    const sheetKeys = ['armorId', 'attributes', 'classRanks', 'level', 'levelPoints', 'maxHealth', 'presetId', 'type', 'weaponId'];
+    expect(b.client.messages).toHaveLength(14);
+    expect(b.client.messages.filter((m) => m.type === 'sheet')).toHaveLength(1);
     for (const message of b.client.messages) {
+      if (message.type === 'sheet') {
+        expect(Object.keys(message).sort()).toEqual(sheetKeys);
+        continue;
+      }
       expect(Object.keys(message).sort()).toEqual(message.type === 'welcome' ? welcomeKeys : tickKeys);
       const tick = message as TickMessage;
       const plain = message.type === 'welcome' ? message.characters : tick.joined;
@@ -418,7 +426,7 @@ describe('world server', () => {
     expect(welcomeForC.characters.map((x) => x.id)).toEqual([2, 3]);
     expect(tickForB.joined.map((x) => x.id)).toEqual([3]);
     expect(tickForB.left).toEqual([1]);
-    expect(c.messages.map((m) => m.type)).toEqual(['queue', 'welcome']);
+    expect(c.messages.map((m) => m.type)).toEqual(['queue', 'welcome', 'sheet']);
     // D is still waiting: it was told its new place and nothing else.
     await d.flush();
     expect(d.messages.map((m) => m.type)).toEqual(['queue', 'queue']);
@@ -732,6 +740,167 @@ describe('world server', () => {
       expect(tick.joined).toEqual([]);
       clock.advance(TICK_MS);
       expect((await a.client.nextMessage('tick')).left).toEqual([]);
+    });
+  });
+
+  describe('combat, on the real arena', () => {
+    const content = loadContent(CONTENT_DIR);
+    const startArena = (options: Omit<WorldServerOptions, 'clock' | 'world'> = {}): Promise<void> =>
+      start({ ...options, world: createArenaWorld(content, 'arena', 7) });
+    const send = (client: TestClient, message: object): void => client.send(JSON.stringify(message));
+
+    /** Runs `count` ticks, waiting for each client to receive each tick message. */
+    async function runTicks(count: number, ...watchers: TestClient[]): Promise<void> {
+      for (let i = 0; i < count; i++) {
+        const before = watchers.map((w) => w.messages.filter((m) => m.type === 'tick').length);
+        clock.advance(TICK_MS);
+        await waitFor(() => watchers.every((w, n) => w.messages.filter((m) => m.type === 'tick').length > before[n]!));
+      }
+    }
+    const ticksOf = (client: TestClient): TickMessage[] =>
+      client.messages.filter((m): m is TickMessage => m.type === 'tick');
+    const sheetsOf = (client: TestClient): SheetMessage[] =>
+      client.messages.filter((m): m is SheetMessage => m.type === 'sheet');
+    const recapsOf = (client: TestClient): RecapMessage[] =>
+      client.messages.filter((m): m is RecapMessage => m.type === 'recap');
+    /** How many hits `you` landed on enemy `enemyId`. */
+    const hitsOn = (client: TestClient, you: number, enemyId: number): number =>
+      ticksOf(client).flatMap((t) =>
+        t.hits.filter((h) => h.attacker.side === 'player' && h.attacker.id === you && h.target.side === 'enemy' && h.target.id === enemyId),
+      ).length;
+
+    it('welcomes with the catalog and the campfire, then sends the sheet', async () => {
+      await startArena();
+
+      const { client, welcome } = await connectAndWelcome();
+      const sheet = await client.nextMessage('sheet');
+
+      expect(welcome.campfire).toEqual({ x: 12, y: 20 });
+      expect(welcome.catalog.waves.map((w) => w.id)).toContain('practice');
+      expect(client.messages.map((m) => m.type)).toEqual(['welcome', 'sheet']);
+      expect(sheet.presetId).toBe('militia');
+      expect(sheet.weaponId).toBe('rusty-shortsword');
+    });
+
+    it('starts a wave and attacks an enemy: later ticks carry hits by this player', async () => {
+      await startArena();
+      const { client } = await connectAndWelcome();
+      send(client, { type: 'mode', mode: 'run' });
+      send(client, { type: 'debug-start-wave', waveId: 'practice' });
+      await client.flush();
+      await runTicks(1, client);
+      expect(ticksOf(client).at(-1)!.enemies.spawned.map((e) => e.id)).toEqual([1, 2]);
+
+      send(client, { type: 'attack', enemyId: 1 });
+      await client.flush();
+      await runTicks(40, client);
+
+      expect(hitsOn(client, 1, 1)).toBeGreaterThan(0);
+    });
+
+    it('sends a changed sheet to that client only, and nothing on ticks where it did not change', async () => {
+      await startArena();
+      const a = await connectAndWelcome();
+      const b = await connectAndWelcome();
+      await runTicks(2, a.client, b.client);
+      expect(sheetsOf(a.client)).toHaveLength(1);
+      expect(sheetsOf(b.client)).toHaveLength(1);
+
+      send(a.client, { type: 'debug-level', level: 5 });
+      await a.client.flush();
+      await runTicks(3, a.client, b.client);
+
+      expect(sheetsOf(a.client).map((s) => s.level)).toEqual([1, 5]);
+      expect(sheetsOf(b.client)).toHaveLength(1);
+      // A no-op change (the same level again) sends nothing.
+      send(a.client, { type: 'debug-level', level: 5 });
+      await a.client.flush();
+      await runTicks(2, a.client, b.client);
+      expect(sheetsOf(a.client)).toHaveLength(2);
+    });
+
+    it('sends a recap after the tick message, to the owner only', async () => {
+      await startArena();
+      const a = await connectAndWelcome();
+      const b = await connectAndWelcome();
+      send(a.client, { type: 'debug-armor', itemId: null });
+      send(a.client, { type: 'mode', mode: 'run' });
+      send(a.client, { type: 'debug-start-wave', waveId: 'wave-1' });
+      move(a.client, 12, 5);
+      await a.client.flush();
+      for (let i = 0; i < 300 && recapsOf(a.client).length === 0; i++) await runTicks(1, a.client, b.client);
+
+      expect(recapsOf(a.client).length).toBeGreaterThan(0);
+      for (const { client, welcome } of [a, b]) {
+        const downs = ticksOf(client).filter((t) => t.downed.includes(welcome.you)).length;
+        expect(recapsOf(client)).toHaveLength(downs);
+        client.messages.forEach((m, i) => {
+          if (m.type === 'recap') expect(client.messages[i - 1]).toMatchObject({ type: 'tick', downed: [welcome.you] });
+        });
+      }
+      const recap = recapsOf(a.client)[0]!;
+      expect(recap.hits.length).toBeGreaterThan(0);
+      expect(Object.keys(recap).sort()).toEqual(['hits', 'tick', 'type']);
+    });
+
+    it('drops the 9th debug message of one tick, and counts afresh on the next tick', async () => {
+      expect(MAX_DEBUG_INTENTIONS_PER_TICK).toBe(8);
+      await startArena();
+      const a = await connectAndWelcome();
+      const b = await connectAndWelcome();
+
+      for (let level = 2; level <= 9; level++) send(a.client, { type: 'debug-level', level });
+      send(a.client, { type: 'debug-level', level: 10 }); // the 9th: dropped
+      send(b.client, { type: 'debug-level', level: 3 }); // another player's count is its own
+      await a.client.flush();
+      await b.client.flush();
+      await runTicks(2, a.client, b.client);
+      expect(sheetsOf(a.client).at(-1)!.level).toBe(9);
+      expect(sheetsOf(b.client).at(-1)!.level).toBe(3);
+
+      send(a.client, { type: 'debug-level', level: 10 });
+      await a.client.flush();
+      await runTicks(2, a.client, b.client);
+      expect(sheetsOf(a.client).at(-1)!.level).toBe(10);
+    });
+
+    describe('the last of move, attack and attack-move in a tick wins', () => {
+      /** Sends the orders in one tick, runs on, and counts this player's hits on the dummy. */
+      async function hitsOnDummyAfter(orders: object[]): Promise<number> {
+        await startArena();
+        const { client } = await connectAndWelcome();
+        send(client, { type: 'mode', mode: 'run' });
+        send(client, { type: 'debug-start-wave', waveId: 'practice' });
+        await client.flush();
+        await runTicks(1, client);
+        for (const order of orders) send(client, order);
+        await client.flush();
+        await runTicks(40, client);
+        return hitsOn(client, 1, 1);
+      }
+      const attack = { type: 'attack', enemyId: 1 };
+      const awayMove = { type: 'move', x: 12, y: 21 };
+      const awayAttackMove = { type: 'attack-move', x: 12, y: 21 };
+
+      it('a move after an attack', async () => expect(await hitsOnDummyAfter([attack, awayMove])).toBe(0));
+      it('an attack after a move', async () => expect(await hitsOnDummyAfter([awayMove, attack])).toBeGreaterThan(0));
+      it('an attack-move after an attack', async () => expect(await hitsOnDummyAfter([attack, awayAttackMove])).toBe(0));
+      it('an attack after an attack-move', async () => expect(await hitsOnDummyAfter([awayAttackMove, attack])).toBeGreaterThan(0));
+    });
+
+    it('keeps the server running when a client sends hostile ids in debug messages', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await startArena();
+      const { client } = await connectAndWelcome();
+
+      send(client, { type: 'debug-start-wave', waveId: 'constructor' });
+      send(client, { type: 'debug-weapon', itemId: 'leather-jerkin' });
+      await client.flush();
+      await runTicks(2, client);
+
+      expect(errors).not.toHaveBeenCalled();
+      expect(ticksOf(client).at(-1)!.enemies.spawned).toEqual([]);
+      expect(sheetsOf(client)).toHaveLength(1);
     });
   });
 });
