@@ -20,12 +20,13 @@ import {
   healDummies,
   planPaths,
   playerBlockers,
+  playerRoute,
   resolveCombat,
   resolveDeaths,
   respawnDowned,
-  routeIntoReach,
   weaponOf,
 } from './combat';
+import { chooseEnemyOrders } from './enemy-ai';
 
 /** A character's id: a positive integer from the server's counter, never reused. */
 export type CharacterId = number;
@@ -243,6 +244,7 @@ export function createArenaWorld(content: ContentBundle, arenaId: string, seed: 
  * 3. Debug intentions, one after another.
  * 4. Movement modes: the last debug mode for each character sets its speed (progress is kept).
  * 5. Orders: the last order from each player who can act wins (see `applyOrders`).
+ * 6. Enemy orders, from the placeholder AI (`chooseEnemyOrders`); steps 7 and 9 carry them out.
  * 7. Plan paths (`planPaths`).
  * 8. Movement: players who can act in id order, then enemies in id order, each walking (see `walk`)
  *    against blockers that reflect where everyone has already moved this tick. A move order ends
@@ -259,9 +261,10 @@ export function step(state: WorldState, intentions: readonly Intention[]): World
   next = applyDebugIntentions(next, sorted);
   next = applyModes(next, sorted);
   next = applyOrders(next, sorted);
-  next = planPaths(next);
+  const enemyOrders = chooseEnemyOrders(next);
+  next = planPaths(next, enemyOrders);
   next = moveEveryone(next);
-  next = resolveCombat(next, now);
+  next = resolveCombat(next, now, enemyOrders);
   next = resolveDeaths(next, now);
   next = healDummies(next, now);
   return { ...next, tick: now + 1 };
@@ -429,40 +432,18 @@ function orderFrom(state: WorldState, character: Character, intention: Intention
   }
 }
 
-/** Where a mover is headed: its move or attack-move destination, else the end of its path, else nowhere. */
-function destinationOf(mover: { readonly path: readonly Tile[]; readonly order?: Order }): Tile | undefined {
-  if (mover.order?.kind === 'move' || mover.order?.kind === 'attack-move') return mover.order.destination;
-  return mover.path[mover.path.length - 1];
-}
-
-/** A player's re-route for `walk`: back into reach of an attack target, else toward the destination. */
-function playerReroute(state: WorldState, c: Character, blockers: Grid): (from: Tile) => readonly Tile[] {
-  const { order } = c;
-  if (order.kind === 'attack') {
-    const target = state.enemies.find((e) => e.id === order.enemyId);
-    const weapon = weaponOf(c.sheet, state.content);
-    if (!target || !weapon) return () => [];
-    return (from) => routeIntoReach(blockers, state.grid, from, target.tile, weapon.stats.rangeTiles);
-  }
-  return rerouteToward(blockers, destinationOf(c));
-}
-
-/** A re-route for `walk`: a fresh route to the destination on the blockers grid, or none. */
-function rerouteToward(blockers: Grid, destination: Tile | undefined): (from: Tile) => readonly Tile[] {
-  return (from) => (destination === undefined ? [] : findRoute(blockers, from, destination).path);
-}
-
 /**
- * 8. Movement. Players who can act first, in id order: enemies block them, other players don't.
- * Players who can't act stay put. Then enemies, in id order: players who aren't down and the other
- * enemies block them, where they stand after moving this tick.
+ * 8. Movement. Players who can act first, in id order: enemies block them, other players don't; a
+ * blocked player re-routes by its order's rule (`playerRoute`). Players who can't act stay put. Then
+ * enemies, in id order: players who aren't down and the other enemies block them, where they stand
+ * after moving this tick; a blocked enemy re-routes toward the end of its planned path.
  */
 function moveEveryone(state: WorldState): WorldState {
   const terrain = state.grid;
   const blockersForPlayers = playerBlockers(state);
   const characters = state.characters.map((c): Character => {
     if (!canAct(c)) return c.stepped.length === 0 ? c : { ...c, stepped: [] };
-    const moved = walk(c, blockersForPlayers, terrain, playerReroute(state, c, blockersForPlayers));
+    const moved = walk(c, blockersForPlayers, terrain, (from) => playerRoute(state, c, blockersForPlayers, from));
     return moved.order.kind === 'move' && moved.path.length === 0 ? { ...moved, order: { kind: 'none' } } : moved;
   });
   const standing = characters.filter((c) => !isDown(c)).map((c) => c.tile);
@@ -470,7 +451,8 @@ function moveEveryone(state: WorldState): WorldState {
   enemies.forEach((enemy, i) => {
     const occupied = [...standing, ...enemies.filter((_, j) => j !== i).map((e) => e.tile)];
     const blockers = withBlockers(terrain, occupied);
-    enemies[i] = walk(enemy, blockers, terrain, rerouteToward(blockers, destinationOf(enemy)));
+    const end = enemy.path[enemy.path.length - 1];
+    enemies[i] = walk(enemy, blockers, terrain, (from) => (end === undefined ? [] : findRoute(blockers, from, end).path));
   });
   return { ...state, characters, enemies };
 }

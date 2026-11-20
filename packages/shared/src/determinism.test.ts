@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld, gridFromRows, step } from './index';
 import type { Intention, WorldState } from './index';
+import { SCRIPT_SLIME, SCRIPT_WAVE_1_IDS, runCombatScript } from './test-support/combat-script';
 
 const GRID_ROWS = [
   '............',
@@ -85,5 +86,39 @@ describe('determinism', () => {
     const speeds = new Set(states.flatMap((s) => s.characters.map((c) => c.speed)));
     expect([...speeds].sort((a, b) => a - b)).toEqual([500, 1000, 2000]);
     expect(states.some((s) => s.characters.some((c) => c.stepped.length === 2))).toBe(true);
+  });
+});
+
+describe('determinism in combat', () => {
+  it('the same combat script on the same seed gives JSON-equal states', () => {
+    const first = runCombatScript(12345);
+    const second = runCombatScript(12345);
+    expect(JSON.stringify(second[second.length - 1])).toBe(JSON.stringify(first[first.length - 1]));
+    expect(second).toEqual(first);
+  });
+
+  it('the combat script does everything it claims to', () => {
+    const states = runCombatScript(12345);
+    const hits = states.flatMap((s) => s.hits);
+    // The practice wave, then wave 1.
+    expect(states.some((s) => s.enemies.some((e) => e.contentId === 'training-dummy'))).toBe(true);
+    expect(states.some((s) => SCRIPT_WAVE_1_IDS.every((id) => s.enemies.some((e) => e.id === id)))).toBe(true);
+    // Players hit the dummy and the slime; slimes hit players through a telegraph.
+    expect(hits.some((h) => h.attacker.side === 'player' && h.target.id === 1 && h.target.side === 'enemy')).toBe(true);
+    expect(hits.some((h) => h.attacker.side === 'player' && h.target.id === SCRIPT_SLIME)).toBe(true);
+    expect(hits.some((h) => h.attacker.side === 'enemy' && h.telegraph !== null)).toBe(true);
+    // An attack-move locked onto an enemy.
+    expect(
+      states.some((s) => s.characters.some((c) => c.order.kind === 'attack-move' && c.order.lockedOn !== null)),
+    ).toBe(true);
+    // A player went down, got a recap, and respawned.
+    expect(states.some((s) => s.downed.length > 0)).toBe(true);
+    expect(states.some((s) => s.recaps.length > 0)).toBe(true);
+    expect(states.some((s) => s.respawned.length > 0)).toBe(true);
+  });
+
+  it('a different seed gives different hit amounts', () => {
+    const amounts = (seed: number): number[] => runCombatScript(seed).flatMap((s) => s.hits.map((h) => h.amount));
+    expect(amounts(54321)).not.toEqual(amounts(12345));
   });
 });

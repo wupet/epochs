@@ -562,6 +562,15 @@ function arenaWithOne(): WorldState {
   return step(createArenaWorld(content, 'arena', 7), [join(1)]);
 }
 
+/**
+ * The arena with player 1 joined and then down for a while (a down player may still send debug
+ * intentions). With no one to chase, a wave's enemies stay exactly where they were placed.
+ */
+function arenaWithOneDown(): WorldState {
+  const world = arenaWithOne();
+  return { ...world, characters: world.characters.map((c) => ({ ...c, health: 0, respawnTick: world.tick + 10 })) };
+}
+
 /** A copy of the state with one character's health set directly. */
 function withHealth(state: WorldState, id: number, health: number): WorldState {
   return { ...state, characters: state.characters.map((c) => (c.id === id ? { ...c, health } : c)) };
@@ -730,7 +739,7 @@ describe('step: debug intentions', () => {
   });
 
   it("debug-start-wave 'practice' places the dummy and the slime", () => {
-    const world = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    const world = step(arenaWithOneDown(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
     expect(world.enemies.map((e) => ({ id: e.id, contentId: e.contentId, tile: e.tile }))).toEqual([
       { id: 1, contentId: 'training-dummy', tile: t(8, 4) },
       { id: 2, contentId: 'slime', tile: t(15, 4) },
@@ -753,7 +762,7 @@ describe('step: debug intentions', () => {
   });
 
   it("a second start-wave 'wave-1' gives ids 3, 4 and 5 and removes the old enemies", () => {
-    let world = step(arenaWithOne(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
+    let world = step(arenaWithOneDown(), [debug({ kind: 'debug-start-wave', waveId: 'practice' })]);
     world = step(world, [debug({ kind: 'debug-start-wave', waveId: 'wave-1' })]);
     expect(world.enemies.map((e) => ({ id: e.id, contentId: e.contentId, tile: e.tile }))).toEqual([
       { id: 3, contentId: 'slime', tile: t(6, 3) },

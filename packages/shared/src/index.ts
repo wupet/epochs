@@ -13,3 +13,4 @@ export * from './damage';
 export * from './character';
 export * from './reach';
 export * from './combat';
+export * from './enemy-ai';
