@@ -39,7 +39,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - Among equally short paths, the one closest to the straight line from start to end wins. *(Peter, 2026-11-19.)*
 - A full server (100 players) puts the next player in a queue that shows their position. *(Peter, 2026-11-19.)*
 - Players pass through each other and can share tiles. *(Peter, 2026-11-19.)*
-- Enemies block movement. *(Peter, 2026-11-19, for Phase 2.)*
+- Enemies block movement: every character treats an enemy's tile as blocked, and enemies can't enter a player's tile either. *(Peter, 2026-11-19 and 2026-11-20, for Phase 2.)*
 - Attack-move, like League of Legends, comes later.
 - Movement speed is a stat: faster characters act on earlier subticks.
 
@@ -52,11 +52,13 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - **Perfect accuracy.** Attacks never miss by chance. If you're in a telegraphed area, you're hit; if you moved out, you're not. Damage has only a small random spread.
 - **Telegraphs.** Big attacks wind up over 0.5 to 1.5 seconds, shown clearly on the grid. Some bosses hide their telegraphs as puzzles.
 - **Damage kinds:** Force, Precision, Arcane, Holy. Weapons split their damage across one or two kinds. Enemies resist or are weak to kinds.
-- **Armor** reduces damage, but never below a small minimum.
+- **Damage** *(Peter, 2026-11-20)*: each kind in a hit gets its bonuses (attribute, level, one spread roll per hit), is multiplied by the target's resistance to that kind, and the kinds are added. Flat armor is subtracted once, but at least 10% of the hit after resistances gets through. Round once, minimum 1, unless the target is immune to every kind in the hit, which does 0.
+- **Resistance** is a multiplier per kind, from what the target is and from its gear: 0.5 halves, 1.25 is a weakness, 0 is immunity. No cap, so immunities are possible but rare. *(Peter, 2026-11-20.)*
+- **Damage numbers are shown.** Working out resistances by watching them is knowledge players earn. *(Peter, 2026-11-20.)*
 - **Up to 5 ability slots** and 1 or 2 item slots, rearranged only at rest stops.
 - **Wounds** last: bleeding, poison, fractures, lost limbs, curses, and more.
 - **No stamina.** Casters use mana; fighters use no resource.
-- **Enemy targeting:** an enemy targets whoever damaged it most recently, otherwise the nearest player. *(Peter, 2026-11-19, for Phase 2.)*
+- **Enemy targeting:** an enemy targets whoever damaged it most recently, otherwise the nearest player. A player who dies is forgotten. The Phase 2 enemy AI is a placeholder, kept easy to replace. *(Peter, 2026-11-19 and 2026-11-20, for Phase 2.)*
 
 ## Characters
 
@@ -73,7 +75,7 @@ Everything game-specific is a data file: classes, abilities, items, enemies, str
 
 - Conditions and signature passives become their own content files in Phase 1. *(Peter, 2026-11-19.)*
 - Ids and fixed choices are lowercase with hyphens, such as `rusty-shortsword` and `holy-relic`. *(Peter, 2026-11-19.)*
-- Damage amounts are whole numbers of at least 1. Resistance multipliers are above 0 (below 1 resists, above 1 is a weakness); the checker warns about any outside 0.25 to 3. *(Peter, 2026-11-19.)*
+- Damage amounts are whole numbers of at least 1. Resistance multipliers are 0 or more (below 1 resists, above 1 is a weakness, 0 is immunity); the checker warns about any outside 0.25 to 3, including 0, so immunities are always deliberate. *(Peter, 2026-11-19 and 2026-11-20.)*
 
 ## What resets each Epoch
 

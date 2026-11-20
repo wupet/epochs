@@ -93,16 +93,20 @@ Peter answers most of these by playing.
 
 ### Damage
 
-For each damage kind an attack carries:
+*(Peter, 2026-11-20. This replaces the first draft, which applied armor to each kind and let 20% through.)*
 
-1. Start from the base amount.
-2. Add 4% per point of the matching attribute: Might for Force, Finesse for Precision, Wits for Arcane.
-3. Add 2% per level.
-4. Apply a spread of up to 10% either way, from the seeded generator.
-5. Multiply by the target's resistance to that kind.
-6. Subtract the target's armor, but at least 20% of the damage always gets through.
+1. **For each damage kind in the hit** (Force, Precision, Arcane, Holy), apply its bonuses:
+   - add 4% per point of the matching attribute: Might for Force, Finesse for Precision, Wits for Arcane;
+   - add 2% per level after the first;
+   - these add together: base × (1 + 4% × attribute + 2% × (level − 1));
+   - then apply the spread: one roll per hit, a whole percent from −10 to +10, from the seeded generator, used for every kind in the hit.
+   - Enemies have no attributes or level, so they deal their base amount plus the spread.
+2. **Multiply each kind by the target's resistance to that kind.** Resistance is a multiplier per kind, from what the target is and from gear: 0.5 halves it, 1.25 is a weakness, and 0 is immunity. Resistances have no cap, so immunities are possible, though rare.
+3. **Add the kinds together.**
+4. **Subtract the target's flat armor once,** but at least 10% of the hit, after resistances, always gets through.
+5. **Round once, minimum 1,** except when the target is immune to every kind in the hit: then the hit does 0.
 
-Round to whole numbers, minimum 1. Only Force, Precision, and Arcane are in this phase.
+Only Force, Precision, and Arcane are in this phase.
 
 Accuracy is perfect: there are no hit rolls. Whatever stands in an ability's area when it resolves is hit. Melee basic attacks hit whatever is adjacent at resolve; ranged attacks need a clear line of sight, and blocked tiles block it.
 
@@ -114,7 +118,7 @@ Accuracy is perfect: there are no hit rolls. Whatever stands in an ability's are
 | Cudgel | Force 6 | Every 5 ticks | Melee |
 | Hunting bow | Precision 5 | Every 5 ticks | Range 6, needs line of sight |
 | Witch's staff | Arcane 3 | Every 5 ticks | Range 4; costs no mana |
-| Leather jerkin | Armor 2 | | |
+| Leather jerkin | Armor 2 | | No resistances |
 | Bandage | | 4-tick channel | Stops bleeding |
 | Three potions | | 1 tick to drink | Healing, cure poison, and one that sets you Burning. Colors shuffled every run |
 
@@ -243,6 +247,27 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
 - **Enemies block movement.** Players still pass through each other and can share tiles. *(Peter, 2026-11-19.)*
 - **Enemies target whoever damaged them most recently,** otherwise the nearest player. *(Peter, 2026-11-19.)*
 - **The enemy AI in this phase is a placeholder.** Keep it simple and easy to replace: smarter enemies and threat mechanics come later. *(Peter, 2026-11-19.)*
+
+### Settled for 2.1
+
+*(Peter, 2026-11-20.)*
+
+- **Basic attacks.** The hit lands on the first tick you're in range. The next swing waits the weapon's interval (4 or 5 ticks). Walking away doesn't reset the interval.
+- **Collision.** Every character treats a tile with an enemy on it as blocked. Enemies also can't enter a tile with a player on it, so players can block a doorway. Players pass through each other.
+- **Slime touch.** The telegraph is the tile the slime's target is standing on. Whoever stands there when it resolves is hit, so stepping away dodges it. The slime then waits 3 ticks before it can touch again.
+- **Training dummy.** 1000 health. It never moves or attacks, and heals to full 20 ticks after the last hit.
+- **Class presets** (debug):
+  - Militia: Might +3, Vigor +1, rusty shortsword.
+  - Hunter: Finesse +3, Vigor +1, hunting bow.
+  - Hedge Witch: Wits +3, Vigor +1, witch's staff.
+  - Every preset wears the leather jerkin. The debug panel can swap weapons.
+  - The point from each level goes into the preset's main attribute; the panel's +/− buttons move them.
+- **Death.** You respawn at the campfire at full health, with no penalty. The wave carries on. Enemies whose most recent damager was you forget you and go back to the nearest player. The recap stays on screen until you close it.
+- **Healing.** No health regeneration and no campfire healing in 2.1; the debug panel has a full-heal button. Campfire healing waits for the design.
+- **Attack-move.** Press **A**, then click a tile: you walk toward it. Whenever an enemy is within weapon range and line of sight, you attack the one nearest you (ties go to the lowest id) until it dies or leaves range, then carry on walking. Clicking an enemy chases and attacks it until it dies.
+- **What players see.** Enemy health bars, and floating damage numbers for hits you deal and take. Working out resistances by watching the numbers is knowledge players should earn; Study the Prey stays the instant, reliable version, plus its damage bonus.
+- **Waves.** Waves are content files. 2.1 ships wave 1 and a practice setup (the dummy and one slime). Starting a wave clears the arena's enemies first. Waves 2 to 5 arrive with their enemies in 2.4 and 2.5.
+- **Corners and line of sight.** Melee follows the no-corner-cutting rule: you can't strike diagonally past a pillar's corner. Line of sight is the straight line between tile centres; a line that touches the corner of a blocked tile is blocked. Pillars are solid cover.
 
 ## When to ask Peter
 
