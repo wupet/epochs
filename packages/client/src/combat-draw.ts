@@ -13,6 +13,7 @@ import {
   COLOR_HEALTH_LOST,
   COLOR_TAKEN,
   HEALTH_BAR_PX,
+  SQUARE_INSET,
   TELEGRAPH_FILL_ALPHA,
   TELEGRAPH_OUTLINE_PX,
   enemyColor,
@@ -32,9 +33,6 @@ export interface DrawFrame {
   readonly tileSize: number;
   readonly nowMs: number;
 }
-
-/** The fraction of a tile a square is inset on each side. */
-export const SQUARE_INSET = 0.15;
 
 /** A health bar over a square whose top-left corner is at (left, top) on screen and whose side is `size`. */
 export function drawHealthBar(g: Graphics, left: number, top: number, size: number, health: number, maxHealth: number): void {

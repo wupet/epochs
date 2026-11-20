@@ -561,7 +561,7 @@ describe('dying under a windup (Review Focus 4)', () => {
     return withEnemy(state, 2, { tile: t(6, 20), readyTick: now });
   }
 
-  it('the touch downs them; a second windup on their tile resolves without hitting anyone; they respawn', () => {
+  it('the touch downs them; the second slime starts no windup on them; they respawn untouched', () => {
     const start = underTwoSlimes();
     const T = start.tick;
     const died = step(start, []);
@@ -570,8 +570,9 @@ describe('dying under a windup (Review Focus 4)', () => {
     expect(died.recaps).toEqual([{ characterId: 1, tick: T, hits: [died.hits[0]] }]);
     expect(characterOf(died, 1).tile).toEqual(t(5, 20));
     expect(characterOf(died, 1).respawnTick).toBe(T + 1);
-    // Slime 2 chose its target before the death, and wound up on the tile where they fell.
-    expect(enemyOf(died, 2).windup).toEqual({ attackId: 'touch', tiles: [t(5, 20)], resolvesAt: T + 1 });
+    // Slime 2 chose its target before the death, but a player at 0 health can't be wound up on.
+    expect(enemyOf(died, 2).windup).toBeNull();
+    expect(enemyOf(died, 2).readyTick).toBe(T);
 
     const after = step(died, []);
     expect(after.respawned).toEqual([1]);
@@ -581,7 +582,31 @@ describe('dying under a windup (Review Focus 4)', () => {
     expect(after.hits).toEqual([]);
     expect(after.rng).toBe(died.rng);
     expect(enemyOf(after, 2).windup).toBeNull();
-    expect(enemyOf(after, 2).readyTick).toBe(T + 1 + TOUCH.cooldownTicks + 1);
+  });
+
+  it('no windup starts on a player knocked to 0 this tick, even one standing on the spawn tile they respawn on', () => {
+    let start = withoutEnemy(arenaWith('wave-1', [t(5, 20)]), 3);
+    const spawn = start.spawn;
+    const T = start.tick;
+    // Slime 1 touches the player (1 health) on the spawn tile now; slime 2, ready, stands beside them.
+    start = withCharacter(start, 1, { health: 1, tile: spawn });
+    start = withEnemy(start, 1, {
+      tile: t(spawn.x - 1, spawn.y),
+      windup: { attackId: 'touch', tiles: [spawn], resolvesAt: T },
+    });
+    start = withEnemy(start, 2, { tile: t(spawn.x + 1, spawn.y), readyTick: T });
+    const died = step(start, []);
+    expect(died.downed).toEqual([1]);
+    expect(died.hits.map((h) => [h.attacker.id, h.target.id])).toEqual([[1, 1]]);
+    expect(enemyOf(died, 2).windup).toBeNull();
+    expect(windupStarts([start, died], 2)).toEqual([]);
+
+    const after = step(died, []);
+    expect(after.respawned).toEqual([1]);
+    expect(characterOf(after, 1).tile).toEqual(spawn);
+    expect(after.hits).toEqual([]);
+    expect(after.rng).toBe(died.rng);
+    expect(characterOf(after, 1).health).toBe(maxHealthOf(characterOf(after, 1).sheet, content));
   });
 
   it('a player who is down is never hit by a resolving windup, even standing on its tile', () => {

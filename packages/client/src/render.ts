@@ -8,7 +8,6 @@ import { findRoute, inBounds, routeIntoReach, withBlockers } from '@epochs/share
 import type { DebugMovementMode, EnemyId, Grid, Tile } from '@epochs/shared';
 import type { ClientWorld } from './client-world';
 import {
-  SQUARE_INSET,
   TextPool,
   drawCampfire,
   drawEnemies,
@@ -17,7 +16,7 @@ import {
   drawTelegraphs,
 } from './combat-draw';
 import type { DrawFrame } from './combat-draw';
-import { showsHealthBar } from './combat-style';
+import { SQUARE_INSET, showsHealthBar } from './combat-style';
 import { clickAction, isFormControl } from './keys';
 import { computeLayout, fitTileSize, tileAtScreen, zoomIn, zoomOut } from './layout';
 import type { Layout } from './layout';
@@ -174,7 +173,14 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
     if (grid === null) return;
     const tile = tileAt(event.clientX, event.clientY, grid);
     if (tile === null) return;
-    const action = clickAction(attackMoveArmed, world.enemyAt(tile));
+    // The body as it is drawn (mid-slide) wins; otherwise the enemy on the tile by its server tile.
+    const layout = lastLayout ?? currentLayout(grid, performance.now());
+    const rect = app.canvas.getBoundingClientRect();
+    const point = {
+      x: (event.clientX - rect.left - layout.originX) / layout.tileSize,
+      y: (event.clientY - rect.top - layout.originY) / layout.tileSize,
+    };
+    const action = clickAction(attackMoveArmed, world.enemyUnderPoint(point, performance.now()));
     attackMoveArmed = false;
     if (action.kind === 'attack') {
       onAttackIntent(action.enemyId);
@@ -264,18 +270,27 @@ export async function startRenderer(options: RendererOptions): Promise<Renderer>
 
       // Hover path preview, from your latest server tile, routed around enemies as the server does. Over an
       // enemy it is the route into reach of your weapon (none without one), and the enemy is outlined.
-      const hoveredEnemy = hovered === null ? undefined : world.enemyAt(hovered);
-      if (hovered !== null && mine !== undefined) {
+      let hoveredEnemy: EnemyId | undefined;
+      if (pointer !== null && hovered !== null) {
+        const rect = app.canvas.getBoundingClientRect();
+        hoveredEnemy = world.enemyUnderPoint(
+          { x: (pointer.x - rect.left - offsetX) / tileSize, y: (pointer.y - rect.top - offsetY) / tileSize },
+          now,
+        );
+      }
+      // Over an enemy, the target is its latest server tile (the body may still be sliding there).
+      const hoverTarget = hoveredEnemy === undefined ? hovered : (world.enemyTileOf(hoveredEnemy) ?? hovered);
+      if (hovered !== null && hoverTarget !== null && mine !== undefined) {
         const range = weaponRange();
-        const key = `${hovered.x},${hovered.y}|${mine.x},${mine.y}|${world.tick}|${range ?? ''}`;
+        const key = `${hoveredEnemy === undefined ? '' : 'e'}${hoverTarget.x},${hoverTarget.y}|${mine.x},${mine.y}|${world.tick}|${range ?? ''}`;
         if (key !== previewKey) {
           const blockers = withBlockers(grid, world.blockerTiles());
           previewKey = key;
           if (hoveredEnemy !== undefined) {
-            previewPath = range === undefined ? [] : routeIntoReach(blockers, grid, mine, hovered, range);
-            previewDestination = hovered;
+            previewPath = range === undefined ? [] : routeIntoReach(blockers, grid, mine, hoverTarget, range);
+            previewDestination = hoverTarget;
           } else {
-            const route = findRoute(blockers, mine, hovered);
+            const route = findRoute(blockers, mine, hoverTarget);
             previewPath = route.path;
             previewDestination = route.destination;
           }

@@ -10,6 +10,9 @@ export const COLOR_CONSTRUCT = 0xa08060;
 export const COLOR_ENEMY_OTHER = 0xd05050;
 export const COLOR_CAMPFIRE = 0xe08a2e;
 
+/** The fraction of a tile a square is inset on each side. */
+export const SQUARE_INSET = 0.15;
+
 /** An enemy's colour by family: slime, construct, anything else. */
 export function enemyColor(family: string): number {
   if (family === 'slime') return COLOR_SLIME;

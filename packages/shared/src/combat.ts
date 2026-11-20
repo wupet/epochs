@@ -162,7 +162,8 @@ type AttackMoveOrder = Extract<Order, { kind: 'attack-move' }>;
  * - winding up: stand still, whatever the order;
  * - chase: stand still while the target is in reach, otherwise route into reach of it;
  * - idle: keep the path it has (builder's call: planning gives an idle enemy nothing new, as it
- *   gives a player with no order nothing; in play that path is empty).
+ *   gives a player with no order nothing). While players are about, an idle enemy's kept path is
+ *   normally empty; once every player has left, an enemy finishes the path it was on.
  */
 export function planPaths(state: WorldState, enemyOrders: readonly EnemyOrder[]): WorldState {
   const blockers = playerBlockers(state);
@@ -250,7 +251,9 @@ function resolveWindups(state: WorldState, now: number): WorldState {
 /**
  * 9.3. Enemy windups start, in enemy id order. An enemy above 0 health that is chasing, has no
  * windup, has `readyTick` <= now and has its target in reach starts its first attack: it covers the
- * tile the target stands on and resolves on now + windup ticks. Rolls nothing.
+ * tile the target stands on and resolves on now + windup ticks. Rolls nothing. No windup starts on a
+ * target who can't act (down, or brought to 0 health earlier this tick; builder's call): otherwise a
+ * touch could land on them right after they respawn on the same tile.
  */
 function startWindups(state: WorldState, now: number, enemyOrders: readonly EnemyOrder[]): WorldState {
   const enemies = state.enemies.map((enemy, i): Enemy => {
@@ -258,7 +261,7 @@ function startWindups(state: WorldState, now: number, enemyOrders: readonly Enem
     if (order?.kind !== 'chase' || enemy.health <= 0 || enemy.windup !== null || enemy.readyTick > now) return enemy;
     const target = state.characters.find((c) => c.id === order.target);
     const attack = lookup(state.content.enemies, enemy.contentId)?.attacks[0];
-    if (!target || isDown(target) || !attack) return enemy;
+    if (!target || !canAct(target) || !attack) return enemy;
     if (!inReach(state.grid, enemy.tile, target.tile, ENEMY_REACH_TILES)) return enemy;
     return { ...enemy, windup: { attackId: attack.id, tiles: [target.tile], resolvesAt: now + attack.windupTicks } };
   });

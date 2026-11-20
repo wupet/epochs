@@ -353,6 +353,32 @@ describe('ClientWorld combat state', () => {
     expect(world.enemyAt({ x: 4, y: 0 })).toBe(6);
   });
 
+  it('enemyUnderPoint picks the body as drawn mid-slide, falling back to the server tile', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 0, 0)]), 0);
+    // Slides from tile (0, 0) to (1, 0) in 500 ms (speed 500 millitiles per tick); at 250 ms it is drawn at x = 0.5.
+    enemyTick(11, { moved: [{ ...slime(5, 1, 0), speed: 500, via: [] }] }, 0, world);
+    expect(world.enemyPositionOf(5, 250)).toEqual({ x: 0.5, y: 0 });
+    // Inside the drawn square (0.65..1.35) but on tile 0, which is not its server tile: picks it.
+    expect(world.enemyUnderPoint({ x: 0.7, y: 0.5 }, 250)).toBe(5);
+    // On its server tile (1) but outside the drawn square (right of 1.35): falls back to the tile.
+    expect(world.enemyUnderPoint({ x: 1.45, y: 0.5 }, 250)).toBe(5);
+    // On neither the body nor the server tile.
+    expect(world.enemyUnderPoint({ x: 0.3, y: 0.5 }, 250)).toBeUndefined();
+    expect(world.enemyUnderPoint({ x: 2.5, y: 0.5 }, 250)).toBeUndefined();
+    // Just above the drawn square's inset edge, off its server tile: not picked.
+    expect(world.enemyUnderPoint({ x: 0.6, y: 0.5 }, 250)).toBeUndefined();
+  });
+
+  it('enemyUnderPoint prefers the drawn body over another enemy by server tile', () => {
+    const world = new ClientWorld();
+    world.applyWelcome(withEnemies([slime(5, 0, 0), slime(6, 2, 0)]), 0);
+    enemyTick(11, { moved: [{ ...slime(5, 1, 0), speed: 500, via: [] }] }, 0, world);
+    // At 500 ms slime 5 is drawn on tile 1; slime 6 stands on tile 2.
+    expect(world.enemyUnderPoint({ x: 1.5, y: 0.5 }, 500)).toBe(5);
+    expect(world.enemyUnderPoint({ x: 2.5, y: 0.5 }, 500)).toBe(6);
+  });
+
   it("blockerTiles lists the enemies' latest server tiles", () => {
     const world = new ClientWorld();
     expect(world.blockerTiles()).toEqual([]);

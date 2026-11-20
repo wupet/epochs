@@ -20,6 +20,7 @@ import type {
   TickMessage,
   WelcomeMessage,
 } from '@epochs/shared';
+import { SQUARE_INSET } from './combat-style';
 import { addHits, visible } from './floating-numbers';
 import type { FloatingNumber } from './floating-numbers';
 import { msPerTile, positionAt, retarget, stillAt } from './motion';
@@ -285,6 +286,23 @@ export class ClientWorld {
       if (at.x === tile.x && at.y === tile.y) return id;
     }
     return undefined;
+  }
+
+  /**
+   * The enemy a pointer at `point` (in tile units, fractional: tile (3, 2)'s centre is (3.5, 2.5))
+   * is over at `nowMs`: first the one whose square is drawn under it (the same inset the renderer
+   * uses, so a sliding body can be clicked where it is), else the one on the point's tile by its
+   * latest server tile.
+   */
+  enemyUnderPoint(point: Point, nowMs: number): EnemyId | undefined {
+    for (const id of this.enemies.keys()) {
+      const pos = this.enemyPositionOf(id, nowMs);
+      if (pos === undefined) continue;
+      const lo = SQUARE_INSET;
+      const hi = 1 - SQUARE_INSET;
+      if (point.x >= pos.x + lo && point.x <= pos.x + hi && point.y >= pos.y + lo && point.y <= pos.y + hi) return id;
+    }
+    return this.enemyAt({ x: Math.floor(point.x), y: Math.floor(point.y) });
   }
 
   enemyInfo(id: EnemyId): { name: string; family: string; health: number; maxHealth: number } | undefined {
