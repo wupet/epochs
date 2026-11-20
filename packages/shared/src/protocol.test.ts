@@ -536,7 +536,8 @@ describe('debugCatalog', () => {
     expect(catalog.weapons.find((w) => w.id === 'hunting-bow')).toEqual({ id: 'hunting-bow', name: 'Hunting Bow', rangeTiles: 6 });
     expect(catalog.armors).toEqual([{ id: 'leather-jerkin', name: 'Leather Jerkin' }]);
     expect(catalog.waves.map((w) => w.id)).toEqual(['practice', 'wave-1']);
-    expect(Object.keys(catalog.presets[0]!).sort()).toEqual(['id', 'name']);
+    expect(Object.keys(catalog.presets[0]!).sort()).toEqual(['id', 'mainAttribute', 'name']);
+    expect(catalog.presets.find((p) => p.id === 'hedge-witch')?.mainAttribute).toBe('wits');
   });
 });
 

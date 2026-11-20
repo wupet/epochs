@@ -2,7 +2,9 @@ import { TICK_MS } from '@epochs/shared';
 import { ClientWorld } from './client-world';
 import { connect } from './connection';
 import type { Connection } from './connection';
+import { createDebugPanel } from './debug-panel';
 import { describeClient } from './describe';
+import { createRecapOverlay } from './recap';
 import { startRenderer } from './render';
 import { TickTiming } from './tick-timing';
 
@@ -24,10 +26,26 @@ async function main(): Promise<void> {
   window.epochsTiming = () => timing.summary();
 
   let connection: Connection | null = null;
+
+  // The HTML parts: the death recap, and the debug panel (debug: it goes when real progression arrives).
+  const dismissRecap = (): void => {
+    world.dismissRecap();
+    recap.show(world.recap);
+  };
+  const recap = createRecapOverlay(dismissRecap);
+  const panel = createDebugPanel((message) => connection?.sendDebug(message));
+  const syncInterface = (): void => {
+    recap.show(world.recap);
+    panel.update(world.catalog, world.sheet);
+  };
+
   const renderer = await startRenderer({
     world,
     onMoveIntent: (tile) => connection?.sendMove(tile),
     onModeIntent: (mode) => connection?.sendMode(mode),
+    onAttackIntent: (enemyId) => connection?.sendAttack(enemyId),
+    onAttackMoveIntent: (tile) => connection?.sendAttackMove(tile),
+    onDismissRecap: dismissRecap,
   });
 
   connection = connect({
@@ -44,7 +62,12 @@ async function main(): Promise<void> {
       } else if (message.type === 'tick' && world.applyTick(message, now)) {
         renderer.noteTick(now);
         timing.record(now);
+      } else if (message.type === 'sheet') {
+        world.applySheet(message);
+      } else if (message.type === 'recap') {
+        world.applyRecap(message);
       }
+      syncInterface();
     },
   });
 

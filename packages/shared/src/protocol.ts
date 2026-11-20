@@ -87,7 +87,8 @@ export interface GridView {
 
 /** Debug: what the debug panel may choose from. Every list is sorted by id. */
 export interface DebugCatalog {
-  readonly presets: readonly { readonly id: string; readonly name: string }[];
+  /** A preset's `mainAttribute` lets the panel's -/+ buttons move level points to and from it as the server does. */
+  readonly presets: readonly { readonly id: string; readonly name: string; readonly mainAttribute: Attribute }[];
   /** A weapon's `rangeTiles` lets the client's hover preview route into reach as the server does. */
   readonly weapons: readonly { readonly id: string; readonly name: string; readonly rangeTiles: number }[];
   readonly armors: readonly { readonly id: string; readonly name: string }[];
@@ -325,7 +326,9 @@ export function debugCatalog(content: ContentBundle): DebugCatalog {
   const named = (list: readonly { readonly id: string; readonly name: string }[]): { id: string; name: string }[] =>
     list.map((e) => ({ id: e.id, name: e.name })).sort(byText);
   return {
-    presets: named(Object.values(content.presets)),
+    presets: Object.values(content.presets)
+      .map((p) => ({ id: p.id, name: p.name, mainAttribute: p.mainAttribute }))
+      .sort(byText),
     weapons: items
       .flatMap((i) => (i.weapon ? [{ id: i.id, name: i.name, rangeTiles: i.weapon.rangeTiles }] : []))
       .sort(byText),

@@ -29,3 +29,121 @@ body {
   pointer-events: none;
   user-select: none;
 }
+
+/* Debug: the panel on the right. */
+.debug-panel {
+  position: fixed;
+  right: 8px;
+  top: 8px;
+  width: 240px;
+  font-size: 12px;
+  color: #ccc;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  user-select: none;
+}
+
+.debug-panel[hidden],
+.debug-body[hidden],
+.recap-overlay[hidden],
+.debug-panel button[hidden] {
+  display: none;
+}
+
+.debug-panel button,
+.debug-panel select,
+.recap-card button {
+  font: inherit;
+  color: #ddd;
+  background: #2b2b2b;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+.debug-panel button:hover:not(:disabled),
+.recap-card button:hover {
+  background: #3a3a3a;
+}
+
+.debug-panel button:disabled {
+  color: #666;
+  border-color: #3a3a3a;
+}
+
+.debug-toggle {
+  width: 100%;
+  text-align: left;
+  font-weight: bold;
+}
+
+.debug-body {
+  padding: 6px 8px 8px;
+}
+
+.debug-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
+}
+
+.debug-label {
+  flex: 0 0 70px;
+}
+
+.debug-value {
+  flex: 1;
+}
+
+.debug-row select {
+  flex: 1;
+}
+
+.debug-heading {
+  margin: 8px 0 2px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+
+.debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* The death recap: stays until closed. */
+.recap-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.recap-card {
+  max-width: min(640px, 90vw);
+  padding: 16px 20px;
+  background: #1c1c1c;
+  border: 1px solid #555;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 14px;
+}
+
+.recap-card h2 {
+  margin: 0 0 8px;
+  color: #ff6b6b;
+}
+
+.recap-card ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}
+
+.recap-card li {
+  margin: 4px 0;
+}
