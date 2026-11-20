@@ -118,7 +118,7 @@
     - cudgel: force 6; interval 5, range 1;
     - bow: precision 5; interval 5, range 6;
     - staff: arcane 3; interval 5, range 4.
-  - **Jerkin:** `damageSplit: []`, `armor: { armor: 2, resistances: [] }`.
+  - **Jerkin:** `damageSplit: []`, `armor: { armor: 1, resistances: [] }` (Peter, 2026-11-20).
   - **Slime:** 12 health, speed 500, attack `touch` "Touch" (windup 1, cooldown 3, force 3), precision 0.5, arcane 1.25, family `slime`, tier 1, mindless.
   - **Dummy:** id `training-dummy`, "Training Dummy", family `construct`, tier 1, 1000 health, speed 0, `attacks: []`, `resistances: []`, mindless, `healsAfterTicks: 20`.
   - **Presets:** each has `armor: "leather-jerkin"`:
@@ -204,7 +204,7 @@
     - Same weapon and attacker against the dummy (no resistances, no armor), spread 0 → `7`.
     - Bow (P5), Finesse 4, against the slime → `3`. Staff (A3), Wits 4, against the slime → `4`.
     - Shortsword, Might 1, level 10, against no resistances: force 4 × 1.22 = 4.88 plus precision 2 × 1.22 = 2.44, total 7.32 → `7`.
-    - The slime's touch (F3, attacker null) against armor 2: spread 0 → `1`, spread +10 → `1`.
+    - The slime's touch (F3, attacker null) against armor 1: spread 0 → `2`, spread +10 → `2`, spread −10 → `2`.
     - Floor: attacker null, F5, armor 10 → `1`, because 0.5 rounds half up. F30 against armor 100 → `3`.
     - Half up: F5 against force 0.5 → `3`.
     - Immune: force 0 against an F4 hit → `0`. Force 0 against F4 + P2 → `2`.
@@ -554,9 +554,9 @@
   - what to check by hand, a numbered walkthrough of the Done-when list using the practice wave;
   - things to know: the builder's calls 1 to 14 from the spec, for Peter to confirm;
   - in "How to run it", that `npm ci` is needed after the merge, because the server now depends on `@epochs/tools` and `package-lock.json` changed;
-  - in the walkthrough, how to reach the recap quickly: a slime does 1 damage per touch through the jerkin, so dying takes about 45 s. Set armor to "none" or start wave 1;
+  - in the walkthrough, how to reach the recap quickly: a slime does 2 damage per touch through the jerkin, so a militia (36 health) dies in about 22 s to one slime. Set armor to "none" or start wave 1;
   - that the class-rank control lists only Militia for now: Hunter and Hedge Witch class files arrive in 2.2, although all three presets ship now;
-  - open design questions, such as campfire healing, how slime damage against the jerkin feels (1 per touch), and what the class ranks will do once 2.2 gives them meaning;
+  - open design questions, such as campfire healing, how slime damage against the jerkin feels (2 per touch), whether dodging feels fair (the slime's 1-tick touch is meant to be avoided by positioning, not reaction), and what the class ranks will do once 2.2 gives them meaning;
   - the test count.
 - [ ] **Step 2: Final verification.** Run `npm test`, `npm run typecheck` and `npm run check-content`, and put the real output figures in the report.
 - [ ] **Step 3: Commit** with the message `Milestone 2.1 report`. The controller then pushes `milestone-2.1` and waits for Peter's approval to merge.

@@ -118,7 +118,7 @@ Accuracy is perfect: there are no hit rolls. Whatever stands in an ability's are
 | Cudgel | Force 6 | Every 5 ticks | Melee |
 | Hunting bow | Precision 5 | Every 5 ticks | Range 6, needs line of sight |
 | Witch's staff | Arcane 3 | Every 5 ticks | Range 4; costs no mana |
-| Leather jerkin | Armor 2 | | No resistances |
+| Leather jerkin | Armor 1 | | No resistances. *(Peter, 2026-11-20: flat armor stays small next to enemy damage, so a slime's touch does 2 through it.)* |
 | Bandage | | 4-tick channel | Stops bleeding |
 | Three potions | | 1 tick to drink | Healing, cure poison, and one that sets you Burning. Colors shuffled every run |
 
@@ -263,6 +263,7 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
   - Every preset wears the leather jerkin. The debug panel can swap weapons.
   - The point from each level goes into the preset's main attribute; the panel's +/− buttons move them.
 - **Death.** You respawn at the campfire on the next tick, at full health, with no penalty. The wave carries on. Enemies whose most recent damager was you forget you and go back to the nearest player. The recap stays on screen until you close it.
+- **Windups and dodging.** An attack with a 1-tick windup is close-range pressure, avoided by positioning rather than by reaction: at walking pace, whether you can step out in time depends on where you are in your stride. Any attack meant to be dodged by reacting must have a windup of at least 2 ticks.
 - **Healing.** No health regeneration and no campfire healing in 2.1; the debug panel has a full-heal button. Campfire healing waits for the design.
 - **Attack-move.** Press **A**, then click a tile: you walk toward it. Whenever an enemy is within weapon range and line of sight, you attack the one nearest you (ties go to the lowest id) until it dies or leaves range, then carry on walking. Clicking an enemy chases and attacks it until it dies.
 - **What players see.** Enemy health bars, and floating damage numbers for hits you deal and take. Working out resistances by watching the numbers is knowledge players should earn; Study the Prey stays the instant, reliable version, plus its damage bonus.

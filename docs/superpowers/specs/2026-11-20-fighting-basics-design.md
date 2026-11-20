@@ -1,6 +1,6 @@
 # Milestone 2.1: Fighting basics (design)
 
-The rules come from `docs/phase-2-brief.md`: its milestone 2.1, the "Damage" section, and "Collision and targeting", including "Settled for 2.1" (Peter, 2026-11-19 and 2026-11-20). This document turns them into exact engine behaviour and records the builder's calls. Peter reviews it together with the plan.
+Approved by Peter on 2026-11-20, with the jerkin at armor 1. The rules come from `docs/phase-2-brief.md`: its milestone 2.1, the "Damage" section, and "Collision and targeting", including "Settled for 2.1" (Peter, 2026-11-19 and 2026-11-20). This document turns them into exact engine behaviour and records the builder's calls. Peter reviews it together with the plan.
 
 **Done when:** you can walk up to a training dummy and a slime, attack them, take damage, die, and read a recap explaining why.
 
