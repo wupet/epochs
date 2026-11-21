@@ -40,7 +40,7 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 - A full server (100 players) puts the next player in a queue that shows their position. *(Peter, 2026-11-19.)*
 - Players pass through each other and can share tiles. *(Peter, 2026-11-19.)*
 - Enemies block movement: every character treats an enemy's tile as blocked, and enemies can't enter a player's tile either. *(Peter, 2026-11-19 and 2026-11-20, for Phase 2.)*
-- Attack-move, like League of Legends: press A, then click a tile. You walk there, attacking the nearest enemy in weapon range and line of sight until it dies or leaves range. *(Peter, 2026-11-20; built in milestone 2.1.)*
+- Attack-move, like League of Legends, as an optional extra (auto-retaliate is the main way to fight back): press A, then click a tile. You walk there, attacking the nearest enemy in weapon range and line of sight until it dies or leaves range. *(Peter, 2026-11-20; built in milestone 2.1.)*
 - Movement speed is a stat: faster characters act on earlier subticks.
 
 ## Technology
@@ -51,7 +51,10 @@ Epochs is a free, web-based, computer-only fantasy RPG. Up to 100 players share 
 
 - **Perfect accuracy.** Attacks never miss by chance. If you're in a telegraphed area, you're hit; if you moved out, you're not. Damage has only a small random spread.
 - **Telegraphs.** Big attacks wind up over 0.5 to 1.5 seconds, shown clearly on the grid. Some bosses hide their telegraphs as puzzles.
-- **Windups and dodging.** A 1-tick windup is close-range pressure, avoided by positioning, not reaction: at walking pace, whether you can step out depends on your stride. Any attack meant to be dodged by reacting needs a windup of at least 2 ticks. *(Peter, 2026-11-20.)*
+- **Windups and dodging.** Every enemy attack has a windup of at least 2 ticks, so it can be dodged by reacting. *(Peter, 2026-11-20, after the 2.1 playtest; replaces the rule that 1-tick windups were close-range pressure.)*
+- **Clicking enemies.** An enemy's click area is larger than its body, the enemy under the cursor is highlighted, and a click on or near an enemy always targets it, never becoming a walk. *(Peter, 2026-11-20.)*
+- **Auto-retaliate,** on by default with a toggle: when you're idle and an enemy damages you, you attack it automatically. *(Peter, 2026-11-20.)*
+- **Death replay.** When you die, the client plays back the last 5 seconds at half speed, with your recap beside it. *(Peter, 2026-11-20.)*
 - **Damage kinds:** Force, Precision, Arcane, Holy. Weapons split their damage across one or two kinds. Enemies resist or are weak to kinds.
 - **Damage** *(Peter, 2026-11-20)*: each kind in a hit gets its bonuses (attribute, level, one spread roll per hit), is multiplied by the target's resistance to that kind, and the kinds are added. Flat armor is subtracted once, but at least 10% of the hit after resistances gets through. Round once, minimum 1, unless the target is immune to every kind in the hit, which does 0.
 - **Resistance** is a multiplier per kind, from what the target is and from its gear: 0.5 halves, 1.25 is a weakness, 0 is immunity. No cap, so immunities are possible but rare. *(Peter, 2026-11-20.)*

@@ -186,7 +186,7 @@ Mindless. They never learn, only grow.
 
 | Tier | Health | Attack | Speed | Resistances |
 | --- | --- | --- | --- | --- |
-| Slime | 12 | Touch: 1-tick windup, Force 3 | Walk | Precision 0.5, Arcane 1.25 |
+| Slime | 12 | Touch: 3-tick windup, then a 6-tick cooldown, Force 3 *(Peter, 2026-11-20, after the 2.1 playtest)* | One tile every 3 ticks *(same)* | Precision 0.5, Arcane 1.25 |
 | Gel | 30 | Touch: 1-tick windup, Force 5 | Walk | Precision 0.5, Arcane 1.25 |
 | Dense slime | 70 | Touch: Force 9. Engulf: 3-tick windup, every tile around it, Force 14, Stunned 2 ticks | One tile every 3 ticks | Precision 0.5, Arcane 1.25 |
 
@@ -254,7 +254,7 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
 
 - **Basic attacks.** The hit lands on the first tick you're in range. The next swing waits the weapon's interval (4 or 5 ticks). Walking away doesn't reset the interval.
 - **Collision.** Every character treats a tile with an enemy on it as blocked. Enemies also can't enter a tile with a player on it, so players can block a doorway. Players pass through each other.
-- **Slime touch.** The telegraph is the tile the slime's target is standing on. Whoever stands there when it resolves is hit, so stepping away dodges it. The slime then waits 3 ticks before it can touch again.
+- **Slime touch.** The telegraph is the tile the slime's target is standing on. Whoever stands there when it resolves is hit, so stepping away dodges it. The slime then waits before it can touch again (3 ticks in 2.1; 6 ticks from 2.1.1, with a 3-tick windup).
 - **Training dummy.** 1000 health. It never moves or attacks, and heals to full 20 ticks after the last hit.
 - **Class presets** (debug):
   - Militia: Might +3, Vigor +1, rusty shortsword.
@@ -263,12 +263,26 @@ Holy damage, every other condition and wound, other classes, gear quality, craft
   - Every preset wears the leather jerkin. The debug panel can swap weapons.
   - The point from each level goes into the preset's main attribute; the panel's +/− buttons move them.
 - **Death.** You respawn at the campfire on the next tick, at full health, with no penalty. The wave carries on. Enemies whose most recent damager was you forget you and go back to the nearest player. The recap stays on screen until you close it.
-- **Windups and dodging.** An attack with a 1-tick windup is close-range pressure, avoided by positioning rather than by reaction: at walking pace, whether you can step out in time depends on where you are in your stride. Any attack meant to be dodged by reacting must have a windup of at least 2 ticks.
+- **Windups and dodging.** Every enemy attack has a windup of at least 2 ticks, so it can be dodged by reacting. *(Peter, 2026-11-20, after the 2.1 playtest. This replaces the earlier rule that 1-tick windups were close-range pressure, avoided by positioning.)*
 - **Healing.** No health regeneration and no campfire healing in 2.1; the debug panel has a full-heal button. Campfire healing waits for the design.
-- **Attack-move.** Press **A**, then click a tile: you walk toward it. Whenever an enemy is within weapon range and line of sight, you attack the one nearest you (ties go to the lowest id) until it dies or leaves range, then carry on walking. Clicking an enemy chases and attacks it until it dies.
+- **Attack-move.** An optional extra from 2.1.1; auto-retaliate is the main way to fight back. Press **A**, then click a tile: you walk toward it. Whenever an enemy is within weapon range and line of sight, you attack the one nearest you (ties go to the lowest id) until it dies or leaves range, then carry on walking. Clicking an enemy chases and attacks it until it dies.
 - **What players see.** Enemy health bars, and floating damage numbers for hits you deal and take. Working out resistances by watching the numbers is knowledge players should earn; Study the Prey stays the instant, reliable version, plus its damage bonus.
 - **Waves.** Waves are content files. 2.1 ships wave 1 and a practice setup (the dummy and one slime). Starting a wave clears the arena's enemies first. Waves 2 to 5 arrive with their enemies in 2.4 and 2.5.
 - **Corners and line of sight.** Melee follows the no-corner-cutting rule: you can't strike diagonally past a pillar's corner. Line of sight is the straight line between tile centres; a line that touches the corner of a blocked tile is blocked. Pillars are solid cover.
+
+### Settled for 2.1.1 (after the 2.1 playtest)
+
+*(Peter, 2026-11-20.)* The playtest found fighting too fast to react to, enemies hard to click (especially moving ones), clicks on a tile an enemy had just left sending you charging into enemies, melee taking constant hits, attack-move unintuitive, and a recap less useful than seeing the death.
+
+- **Pacing.** The slime's touch winds up over 3 ticks, then has a 6-tick cooldown. Slimes walk one tile every 3 ticks. Every enemy attack has a windup of at least 2 ticks (see "Windups and dodging").
+- **Clicking enemies.**
+  - Each enemy has a click area larger than its body.
+  - The enemy under the cursor is highlighted.
+  - A click on or near an enemy always targets it and never becomes a walk.
+  - The game starts at a closer zoom.
+- **Auto-retaliate,** on by default, with a toggle. When you're idle and an enemy damages you, you attack it automatically. Attack-move stays as an optional extra.
+- **Death replay.** The client keeps the last 5 seconds of ticks. When you die, it plays them back at half speed, with your recap beside it.
+
 
 ## When to ask Peter
 
